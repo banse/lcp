@@ -20,7 +20,7 @@ function liveTask(events, id) {
 }
 
 // What he does for a task (owner's mapping, 2026-10-24): oracle = telescope, research = book, video = TV,
-// audio = piano, websites = cooking, token launch work = computer, everything else = cooking.
+// audio = piano, websites = cooking, images = easel, token launch work = computer, everything else = cooking.
 const TOKEN_LAUNCHES = ['custom_token', 'evm_project', 'univ4_hook'];
 export function taskKind(t) {
   if (!t) return null;
@@ -30,13 +30,14 @@ export function taskKind(t) {
   if (/video/.test(k) || /\bvideo\b/.test(o.slice(0, 60))) return 'tv';
   if (/audio|music|sound|song|voice|podcast/.test(k) || /\b(audio|music|song|soundtrack|podcast)\b/.test(o.slice(0, 60))) return 'piano';
   if (/website|site|frontend|design_critic|landing/.test(k)) return 'cook';
+  if (/image|illustrat|artwork/.test(k)) return 'easel';
   if (TOKEN_LAUNCHES.includes(t.launch)) return 'computer';
   return 'cook';
 }
 
 export const KIND_SAY = {
   telescope: 'an oracle question', book: 'a research task', tv: 'a video task', piano: 'an audio task',
-  computer: 'token launch work', cook: 'a task',
+  easel: 'an image task', computer: 'token launch work', cook: 'a task',
 };
 
 export function describeTask(t) {
@@ -187,18 +188,19 @@ export class LiveFeed {
       const asleep = online != null ? !online && !(cur && cur.working)
         : isAsleep(cur, now) || (this.leftAt != null && !(cur && cur.working));
       const verifierDown = sw.health && sw.health.verifierUp === false;
+      const paused = !!(this.detail && this.detail.pausedByOwnerAt);       // only readable through the local relay
       const idleHours = cur && cur.last && !cur.working ? (now - Date.parse(cur.last)) / 3600000 : 0;
       const status = { seat: id, data: cur, asleep, verifierDown, idleHours, at: new Date(), live: true, health: sw.health,
-        online, version: this.detail ? this.detail.daemonVersion : null, update: this.update, detailRead: !!this.detail };
+        online, paused, version: this.detail ? this.detail.daemonVersion : null, update: this.update, detailRead: !!this.detail };
       if (!this.prev) {
         this.onEvent({ type: 'init', seat: id, data: cur, asleep, working: !!(cur && cur.working),
-          accepted: cur ? cur.accepted : 0, verifierDown, update: this.update, ...(cur && cur.working ? this.guessWork(sw.events) : {}) });
+          accepted: cur ? cur.accepted : 0, verifierDown, paused, update: this.update, ...(cur && cur.working ? this.guessWork(sw.events) : {}) });
       } else {
         const posted = cur && this.prev.data && cur.attempts !== this.prev.data.attempts;
         if (cur && (posted || (Date.now() - this.lastDetailAt > 2 * 60000 && prevChanged(this.prev.data, cur)))) setTimeout(() => this.checkDetail(), posted ? 1500 : 0);
-        this.diff(this.prev, cur, asleep, verifierDown, sw.events);
+        this.diff(this.prev, cur, asleep, verifierDown, sw.events, paused);
       }
-      this.prev = { data: cur, asleep, verifierDown };
+      this.prev = { data: cur, asleep, verifierDown, paused };
       this.onStatus(status);
     } catch (err) {
       this.fails++;
@@ -208,7 +210,7 @@ export class LiveFeed {
     this.timer = setTimeout(() => this.poll(), wait);
   }
 
-  diff(prev, cur, asleep, verifierDown, events) {
+  diff(prev, cur, asleep, verifierDown, events, paused) {
     const p = prev.data || {}, c = cur || {};
     const d = (k) => (c[k] || 0) - (p[k] || 0);
     if (prev.asleep && !asleep) this.onEvent({ type: 'wake' });
@@ -221,6 +223,8 @@ export class LiveFeed {
     if (!(p.queued > 0) && c.queued > 0) this.onEvent({ type: 'phone' });
     if (prev.verifierDown !== verifierDown) this.onEvent({ type: 'verifier', down: verifierDown });
     if (!prev.asleep && asleep) this.onEvent({ type: 'sleep' });
+    if (!prev.paused && paused) this.onEvent({ type: 'pause' });
+    if (prev.paused && !paused) this.onEvent({ type: 'resume' });
   }
 
   async checkOracle() {
@@ -260,7 +264,7 @@ export class DemoFeed {
   start() {
     this.stop();
     const D = this.data;
-    const status = (asleep = false, verifierDown = false) => this.onStatus({ seat: 'demo', data: { ...D }, asleep, verifierDown, at: new Date(), live: false });
+    const status = (asleep = false, verifierDown = false, paused = false) => this.onStatus({ seat: 'demo', data: { ...D }, asleep, verifierDown, paused, at: new Date(), live: false });
     const kind = (k, label) => ({ type: 'work', kind: k, label });
     const plan = [
       [0, () => { this.onEvent({ type: 'init', seat: 'demo', data: D, asleep: false, working: false, accepted: D.accepted, verifierDown: false, letter: true }); status(); }],
@@ -272,16 +276,20 @@ export class DemoFeed {
       [76, () => { this.onEvent({ type: 'workkind', kind: 'book', label: 'a research task' }); status(); }],
       [90, () => { this.onEvent({ type: 'workkind', kind: 'tv', label: 'a video task' }); status(); }],
       [104, () => { this.onEvent({ type: 'workkind', kind: 'piano', label: 'an audio task' }); status(); }],
-      [118, () => { this.onEvent({ type: 'workkind', kind: 'telescope', label: 'an oracle question' }); status(); }],
-      [134, () => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }],
-      [146, () => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }],
-      [160, () => { this.onEvent({ type: 'update', info: { current: '0.1.4+011c9f4c', latest: '0.1.4+1103e27b', behind: 3, latestAgeH: 7, needs: true } }); status(); }],
-      [190, () => { this.onEvent({ type: 'updated', from: '0.1.4+011c9f4c', to: '0.1.4+1103e27b', info: { needs: false } }); status(); }],
-      [214, () => { this.onEvent({ type: 'verifier', down: true }); status(false, true); }],
-      [226, () => { this.onEvent({ type: 'verifier', down: false }); status(); }],
-      [232, () => { this.onEvent({ type: 'sleep' }); status(true); }],
-      [250, () => { this.onEvent({ type: 'wake' }); status(); }],
-      [262, () => this.start()],
+      [118, () => { this.onEvent({ type: 'workkind', kind: 'easel', label: 'an image task' }); status(); }],
+      [132, () => { this.onEvent({ type: 'workkind', kind: 'telescope', label: 'an oracle question' }); status(); }],
+      [148, () => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }],
+      [160, () => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }],
+      [174, () => { this.onEvent({ type: 'update', info: { current: '0.1.4+011c9f4c', latest: '0.1.4+1103e27b', behind: 3, latestAgeH: 7, needs: true } }); status(); }],
+      [204, () => { this.onEvent({ type: 'updated', from: '0.1.4+011c9f4c', to: '0.1.4+1103e27b', info: { needs: false } }); status(); }],
+      [228, () => { this.onEvent({ type: 'verifier', down: true }); status(false, true); }],
+      [240, () => { this.onEvent({ type: 'verifier', down: false }); status(); }],
+      [246, () => { this.onEvent({ type: 'sleep' }); status(true); }],
+      [256, () => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(true); }],
+      [270, () => { this.onEvent({ type: 'wake' }); status(); }],
+      [330, () => { this.onEvent({ type: 'pause' }); status(false, false, true); }],
+      [354, () => { this.onEvent({ type: 'resume' }); status(); }],
+      [374, () => this.start()],
     ];
     for (const [s, fn] of plan) this.timers.push(setTimeout(fn, s * 1000));
   }

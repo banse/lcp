@@ -120,6 +120,8 @@ export function drawPerson(g, p, t, L) {
         case 'read': arm(1, -16, 4, 2); S(4, -22, 6, 8, p.book || P.blue); S(5, -21, 4, 6, P.white); break;
         case 'readmail': arm(1, -16, 4, 2); S(4, -22, 7, 6, P.white); S(5, -20, 5, 1, P.greyD); break;
         case 'hang': arm(1, -28, 2, 10); S(1, -32, 6, 6, P.yellow); S(2, -31, 4, 4, P.green); break;
+        case 'reach': arm(1, -28, 2, 10); S(1, -30, 2, 2, L.skin); break;
+        case 'paint': arm(1, -19 + f, 6, 2); S(7, -21 + f, 1, 4, P.woodD); S(7, -22 + f, 1, 1, P.red); S(-7, -14, 5, 2, P.woodL); break;
         case 'carry': arm(1, -15, 4, 2); S(4, -15, 6, 4, P.white); S(4, -15, 6, 1, P.red); break;
         case 'water': arm(1, -15, 4, 2); S(4, -16, 6, 5, P.teal); S(10, -18, 3, 1, P.teal); break;
         case 'brush': arm(1, -19, 2, 4); S(2 + f, -23, 4, 1, P.white); break;

@@ -36,6 +36,9 @@ export const SPOTS = {
   bedWin: { floor: 2, x: 148, face: 1 },
   mailbox: { floor: 'out', x: 40, face: -1 },
   parcel: { floor: 'out', x: 50, face: -1 },
+  easel: { floor: 1, x: 84, face: -1 },
+  doorOut: { floor: 'out', x: 46, face: 1 },          // outside the front door, where the sign hangs
+  away: { floor: 'out', x: -14, face: -1 },           // off the left edge: out of the house
 };
 
 export const P = {
@@ -205,6 +208,9 @@ function furniture(g) {
   rect(g, P.beige, 120, 168, 26, 18); rect(g, P.beige, 130, 186, 6, 2); rect(g, P.beige, 112, 186, 14, 2);
   rect(g, P.greyD, 122, 170, 22, 14);
   rect(g, P.greyD, 150, 186, 8, 2); line(g, P.greyD, 152, 186, 150, 177);
+  line(g, P.woodD, 70, 184, 64, 207); line(g, P.woodD, 72, 184, 78, 207); rect(g, P.woodD, 71, 184, 1, 23);   // easel
+  rect(g, P.woodL, 64, 184, 14, 13); rect(g, P.white, 65, 185, 12, 11); rect(g, P.grey, 67, 192, 8, 1);
+  rect(g, P.woodD, 63, 197, 16, 2);
   rect(g, P.woodD, 166, 146, 28, 62);
   [150, 164, 178, 192].forEach((y, i) => {
     for (let x = 168, k = 0; x < 192; x += 3, k++) {
@@ -330,6 +336,17 @@ export function drawSky(g, phase, t) {
 const DIGITS = { 0: '111101101101111', 1: '010110010010111', 2: '111001111100111', 3: '111001111001111', 4: '101101111001001',
   5: '111100111001111', 6: '111100111101111', 7: '111001001001001', 8: '111101111101111', 9: '111101111001111' };
 
+const LETTERS = { A: '010101111101101', B: '110101110101110', C: '011100100100011', K: '101101110101101', N: '110101101101101',
+  O: '010101101101010', S: '011100010001110' };
+
+function drawWord(g, c, word, x, y) {
+  for (const ch of word) {
+    const bits = LETTERS[ch];
+    for (let i = 0; i < 15; i++) if (bits[i] === '1') rect(g, c, x + (i % 3), y + Math.floor(i / 3), 1, 1);
+    x += 4;
+  }
+}
+
 export function drawNumber(g, c, n, x, y) {
   for (const ch of String(n)) {
     const bits = DIGITS[ch];
@@ -366,8 +383,13 @@ export function drawProps(g, s, t) {
   }
   if (a === 'review') { rect(g, P.yellow, 146, 174, 10, 4); rect(g, shade(P.yellow, 0.5), 140, 178, 20, 10); }
   else rect(g, P.greyD, 146, 174, 10, 4);
-  // fire (always lit while he is awake)
-  if (!s.asleep) {
+  // easel: the picture grows while he paints
+  if (a === 'paint') {
+    const n = 1 + ((t >> 4) % 14);
+    for (let i = 0; i < n; i++) rect(g, [P.blue, P.yellow, P.red, P.green, P.pink, P.teal][i % 6], 66 + (i * 5) % 10, 186 + (i * 3) % 9, 2, 2);
+  }
+  // fire (always lit while he is home and awake)
+  if (!s.asleep && !s.away) {
     for (let i = 0; i < 6; i++) {
       const h = 6 + ((t * 3 + i * 17) % 9) + (a === 'fire' ? 4 : 0);
       rect(g, i % 2 ? P.yellow : '#f08a2c', 313 + i * 3, 290 - h, 3, h);
@@ -398,7 +420,7 @@ export function drawProps(g, s, t) {
   if (a === 'water') for (let i = 0; i < 3; i++) rect(g, P.screenL, 382 - i * 2, 186 + ((t + i * 5) % 10), 1, 2);
   // mailbox
   rect(g, P.blue, 14, 264, 20, 11); rect(g, P.blueD, 14, 274, 20, 2); rect(g, P.white, 18, 268, 12, 1);
-  if (s.mailWaiting || s.outgoing) rect(g, P.red, 34, 258, 2, 10); else rect(g, P.red, 34, 266, 8, 2);
+  if (s.mailbox > 0 || s.outgoing) rect(g, P.red, 34, 258, 2, 10); else rect(g, P.red, 34, 266, 8, 2);
   // a parcel with the new worker on the doorstep
   if (s.parcel) {
     rect(g, P.wood, 40, 288, 12, 10); rect(g, P.woodL, 40, 288, 12, 2); rect(g, P.yellow, 45, 288, 2, 10);
@@ -408,6 +430,12 @@ export function drawProps(g, s, t) {
   if (s.doorOpen) { rect(g, P.black, 56, 252, 4, 38); rect(g, P.wood, 46, 252, 10, 38); }
   else { rect(g, P.wood, 55, 252, 6, 38); rect(g, P.yellow, 59, 271, 2, 2); }
   rect(g, P.woodD, 54, 250, 8, 2);
+  // the owner paused the seat: a sign on the front door
+  if (s.sign) {
+    rect(g, P.ink, 50, 252, 1, 2); line(g, P.ink, 46, 256, 50, 253); line(g, P.ink, 54, 256, 50, 253);
+    rect(g, P.woodD, 41, 256, 19, 15); rect(g, P.cream, 42, 257, 17, 13);
+    drawWord(g, P.ink, 'BACK', 43, 258); drawWord(g, P.ink, 'SOON', 43, 264);
+  }
   // pictures for accepted work, and the brass plaque with the total
   const n = Math.min(9, s.frames);
   for (let i = 0; i < n; i++) {
@@ -422,7 +450,7 @@ export function drawProps(g, s, t) {
 
 // dark overlay on the rooms while the lights are off
 export function drawLights(g, s, phase) {
-  if (!s.asleep) return;
+  if (!s.asleep && !s.away) return;
   g.fillStyle = phase === 'night' || phase === 'dusk' ? 'rgba(12,14,40,0.62)' : 'rgba(30,30,50,0.28)';
   g.fillRect(56, 48, 388, 242);
   if (phase === 'night') { g.fillStyle = 'rgba(244,238,210,0.10)'; g.fillRect(138, 64, 30, 62); }

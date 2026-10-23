@@ -38,10 +38,10 @@ function draw() {
   const s = house.state, m = house.man;
   drawProps(g, s, tick);
   drawDog(g, house.dog, tick, look.dog);
-  if (!(s.closeup && s.closeup.k > 0.3)) drawPerson(g, m, tick, look);   // at the glass he is in the close-up
+  if (!m.hidden && !(s.closeup && s.closeup.k > 0.3)) drawPerson(g, m, tick, look);   // at the glass he is in the close-up
   drawLights(g, s, phase);
   if (house.carrier) drawCarrier(g, house.carrier, tick);
-  if (m.icon) {
+  if (m.icon && !m.hidden) {
     const hx = m.pose === 'sleep' ? 76 : m.x, hy = m.pose === 'sleep' ? 98 : m.y - (['sit', 'type', 'review', 'piano', 'tvsit', 'sad'].includes(m.pose) ? 32 : 32);
     drawBubble(g, hx, hy, m.icon, tick);
   }
@@ -74,8 +74,8 @@ function visit(id) {
   house.onKnock = showKnock;
   feed = live; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
-  setTitle('Who lives in seat ', id);
-  $('lede').textContent = 'A little person lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.';
+  setTitle('Who lives in Swarmstreet ', id);
+  $('lede').textContent = 'A little pepe lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.';
   $('seat-input').value = id;
   $('demo-btn').setAttribute('aria-pressed', 'false');
   if (location.hash !== '#/seat/' + id) history.replaceState(null, '', '#/seat/' + id);
@@ -90,7 +90,7 @@ function startDemo() {
   house.onKnock = showKnock; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
   setTitle('Demo: a made-up seat, one fast day', null);
-  $('lede').textContent = 'Every event the house knows, in about four and a half minutes: the phone, each kind of work (token launch at the computer, websites and other tasks at the stove, research, video, audio, oracles), mail, a failed run, a worker update, the checker going down, sleep.';
+  $('lede').textContent = 'Every event the house knows, in about six minutes: the phone, each kind of work (token launch at the computer, websites and other tasks at the stove, research, video, audio, images, oracles), mail, a failed run, a worker update, the checker going down, sleep with mail at night, and the owner pausing the seat.';
   $('demo-btn').setAttribute('aria-pressed', 'true');
   if (location.hash !== '#demo') history.replaceState(null, '', '#demo');
   demo.start();
@@ -124,8 +124,12 @@ const SAY = {
   submitted: (e) => `He posted a result: that was ${e.label}${e.task && e.task.nodeKey ? ' (' + e.task.nodeKey + ')' : ''}.`,
   workdone: () => 'He finished the task and got up.',
   post: (e) => e.n > 1 ? `He posted ${e.n} results in the mailbox.` : 'He posted a result in the mailbox.',
-  accepted: (e) => e.n > 1 ? `Good news in the mail: ${e.n} accepted. New pictures go on the wall.` : 'Good news in the mail: accepted. A new picture goes on the wall.',
-  rejected: (e) => e.n > 1 ? `${e.n} rejections came in the mail. He sits on his bed for a while.` : 'A rejection came in the mail. He sits on his bed for a while.',
+  accepted: (e) => resting()
+    ? `Mail came while he ${resting().during}: ${e.n > 1 ? e.n + ' accepted' : 'accepted'}. The flag is up and the plaque already counts it; he hangs the picture when ${resting().after}.`
+    : e.n > 1 ? `Good news in the mail: ${e.n} accepted. New pictures go on the wall.` : 'Good news in the mail: accepted. A new picture goes on the wall.',
+  rejected: (e) => resting()
+    ? `Mail came while he ${resting().during}: ${e.n > 1 ? e.n + ' rejections' : 'a rejection'}. The flag is up; he reads it when ${resting().after}.`
+    : e.n > 1 ? `${e.n} rejections came in the mail. He sits on his bed for a while.` : 'A rejection came in the mail. He sits on his bed for a while.',
   failed: () => 'His computer started smoking: a run failed.',
   phone: () => 'The phone rings: work is waiting for him.',
   oracle: () => 'He looks through the telescope: his seat sits on an oracle panel.',
@@ -134,11 +138,15 @@ const SAY = {
   wake: () => 'He\'s up again: the seat is back.',
   update: (e) => `A parcel arrived: a newer worker is out (${e.info.latest}${e.info.behind != null ? ', ' + e.info.behind + ' releases ahead of his' : ''}). It waits at the door until the seat updates.`,
   updated: (e) => `The seat updated its worker to ${e.to}. He unpacks the parcel and installs it.`,
+  pause: () => 'His owner paused the seat. He hung a "back soon" sign on the door and went out.',
+  resume: () => 'The seat is on again. He came home and took the sign down.',
 };
+const resting = () => !house ? null : house.state.away ? { during: 'was out', after: 'he\'s back' }
+  : house.state.asleep ? { during: 'slept', after: 'he\'s up' } : null;
 
 const WORK_SAY = {
   computer: 'He sits down at the computer', telescope: 'He goes to the telescope', book: 'He takes a book from the shelf',
-  tv: 'He sits down in front of the TV', piano: 'He sits down at the piano', cook: 'He starts cooking',
+  tv: 'He sits down in front of the TV', piano: 'He sits down at the piano', easel: 'He picks up his brush at the easel', cook: 'He starts cooking',
 };
 function workLine(e, change) {
   const base = (WORK_SAY[e.kind] || 'He starts working') + ': ' + (e.label || 'a task');
@@ -148,10 +156,10 @@ function workLine(e, change) {
 function onEvent(e) {
   if (!house) return;
   if (e.type === 'init') {
-    const st = e.asleep ? 'He\'s asleep: the seat left the network or has had no task for three days.' : e.working ? 'He\'s working on ' + (e.label || 'a task') + (e.guess ? ' (probably, going by his recent work).' : '.') : 'He\'s at home, between tasks.';
+    const st = e.paused ? 'He\'s out: the seat\'s owner paused it. A sign on the door says he\'ll be back soon.' : e.asleep ? 'He\'s asleep: the seat left the network or has had no task for three days.' : e.working ? 'He\'s working on ' + (e.label || 'a task') + (e.guess ? ' (probably, going by his recent work).' : '.') : 'He\'s at home, between tasks.';
     addDiary(mode === 'demo' ? 'The demo starts. ' + st : `You're visiting seat #${e.seat}. ${st}`);
     if (e.update && e.update.needs) addDiary(`A parcel waits at his door: the seat runs ${e.update.current}, and the newest worker is ${e.update.latest}.`);
-    if (mode === 'live') e.letter = prepareLetter(e.seat, e.data, e.asleep);
+    if (mode === 'live') e.letter = prepareLetter(e.seat, e.data, e.asleep, e.paused);
     else { pendingLetter = demoLetter(); e.letter = true; }
   } else if (SAY[e.type]) addDiary(SAY[e.type](e));
   house.event(e);
@@ -165,7 +173,7 @@ function onEvent(e) {
 function ackKey() { return `seathouse:knock:${seatId}:${lastUpdate ? lastUpdate.latest : ''}`; }
 
 function maybeKnock() {
-  if (!house || !lastUpdate || !lastUpdate.needs || house.state.asleep || !house.state.needsUpdate) return;
+  if (!house || !lastUpdate || !lastUpdate.needs || house.state.asleep || house.state.away || !house.state.needsUpdate) return;
   if (mode !== 'demo' && !ownedSeats.has(seatId)) return;            // only the owner is knocked for
   const acked = Number(store(ackKey()) || 0);
   if (mode !== 'demo' && Date.now() - acked < ACK_MS) return;
@@ -200,7 +208,7 @@ function onStatus(s) {
   const bits = [];
   if (!d) bits.push('This seat has no record in the swarm yet.');
   else {
-    bits.push(d.working ? 'Working now.' : s.asleep ? 'Asleep.' : s.idleHours > 12 ? 'Awake, but no work for a while.' : 'Awake.');
+    bits.push(s.paused ? 'Paused by its owner.' : d.working ? 'Working now.' : s.asleep ? 'Asleep.' : s.idleHours > 12 ? 'Awake, but no work for a while.' : 'Awake.');
     if (d.agentId) bits.push(`Agent ${d.agentId}.`);
     if (d.last) bits.push('Last task ' + ago(Date.parse(d.last)) + '.');
   }
@@ -247,7 +255,7 @@ function store(key, val) {
   return null;
 }
 
-function prepareLetter(id, d, asleep) {
+function prepareLetter(id, d, asleep, paused) {
   if (!d) return false;
   const key = 'seathouse:v1:' + id, today = new Date().toISOString().slice(0, 10);
   const prev = store(key);
@@ -255,7 +263,7 @@ function prepareLetter(id, d, asleep) {
   const now = { day: today, at: Date.now(), attempts: d.attempts, accepted: d.accepted, rejected: d.rejected, failed: d.failed };
   const lines = [];
   if (!prev) {
-    lines.push(`Hello! I'm the little person who lives in seat #${id}.`);
+    lines.push(`Hello! I'm the little pepe who lives in Swarmstreet #${id}.`);
     lines.push(`So far I have taken on ${d.attempts} tasks: ${d.accepted} were accepted, ${d.rejected} rejected and ${d.failed} failed.`);
   } else {
     const dd = (k) => d[k] - (prev[k] || 0);
@@ -264,7 +272,7 @@ function prepareLetter(id, d, asleep) {
     else lines.push(`I took on ${dd('attempts')} tasks. ${dd('accepted')} were accepted, ${dd('rejected')} rejected and ${dd('failed')} failed.`);
   }
   const rate = d.attempts ? Math.round(100 * d.accepted / d.attempts) : 0;
-  lines.push(d.working ? 'Right now I\'m in the middle of a task.' : asleep ? 'I\'m having a long rest, so don\'t wake me.' : 'Right now I\'m between tasks.');
+  lines.push(paused ? 'I\'m out for a while: my owner paused the seat.' : d.working ? 'Right now I\'m in the middle of a task.' : asleep ? 'I\'m having a long rest, so don\'t wake me.' : 'Right now I\'m between tasks.');
   if (d.attempts > 20) lines.push(rate >= 85 ? `Most of my work gets accepted (${rate}%). I'm proud of the wall.` : `${rate}% of my work gets accepted. I keep trying.`);
   lines.push('', 'Yours,', `seat #${id}`);
   pendingLetter = lines.join('\n');
@@ -276,11 +284,18 @@ function demoLetter() {
   return 'Hello! I\'m a made-up seat, here to show you around.\nWatch the phone, the mailbox, the telescope and my computer: each one stands for something a real seat does.\n\nYours,\nthe demo seat';
 }
 
-function showLetter() {
+// why: undefined when he typed it at the desk, 'bed' or 'away' when he left it as a note; late: he left just now
+const NOTE = {
+  bed: { head: 'A note he left before bed', diary: 'He left you a note before going to bed.', ps: 'P.S. I\'m off to bed now. See you when the seat is back.' },
+  away: { head: 'A note he left before going out', diary: 'He left you a note before going out.', ps: 'P.S. I have to go out for a while: my owner paused the seat.' },
+};
+function showLetter(why, late) {
   if (!pendingLetter) return;
-  $('letter-text').textContent = pendingLetter;
+  const n = NOTE[why];
+  $('letter-head').textContent = n ? n.head : 'A letter from him';
+  $('letter-text').textContent = pendingLetter + (n && late ? '\n\n' + n.ps : '');
   $('letter').hidden = false;
-  addDiary('He typed you a letter.');
+  addDiary(n ? n.diary : 'He typed you a letter.');
   pendingLetter = null;
 }
 function hideLetter() { $('letter').hidden = true; pendingLetter = null; }

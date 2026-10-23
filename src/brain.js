@@ -4,21 +4,22 @@ import { FLOOR_Y, OUT_Y, FLIGHTS, SPOTS, DOOR_X, P } from './world.js';
 
 const SPEED = 1.1;
 const sec = (s) => Math.round(s * 30);
+const KEEP = ['mail', 'install'];   // what waits for him while he sleeps or is out
 
 export class House {
   constructor(seed, sound) {
     this.sound = sound;
     this.man = { x: 226, floor: 0, y: FLOOR_Y[0], face: 1, pose: 'stand', step: 0, icon: null, carry: null, seat: 10 };
-    this.dog = { x: 150, floor: 0, y: FLOOR_Y[0], face: 1, pose: 'sit', step: 0, target: null, wait: 0 };
+    this.dog = { x: 150, floor: 0, y: FLOOR_Y[0], face: 1, pose: 'sit', step: 0, target: null, wait: 0, mode: null };
     this.carrier = null;
-    this.state = { action: null, asleep: false, working: false, smoke: false, phoneRinging: false, mailWaiting: false,
-      outgoing: 0, tvStatic: false, frames: 0, pendingFrames: 0, doorOpen: false, parcel: false, needsUpdate: false,
-      installProgress: 0 };
+    this.state = { action: null, asleep: false, away: false, sign: false, working: false, smoke: false, phoneRinging: false,
+      mailbox: 0, mailDue: 0, parcelDue: false, outgoing: 0, tvStatic: false, frames: 0, doorOpen: false, parcel: false,
+      needsUpdate: false, installProgress: 0 };
     this.queue = [];
     this.current = null;
     this.cooldown = {};
     this.seedRoutine(seed);
-    this.onLetterDone = null;
+    this.onLetterDone = null;     // (why, late): why = 'bed' or 'away' when he left it as a note
     this.onKnock = null;          // (info) => the page shows its message to the owner
     this.knockAck = false;
   }
@@ -31,19 +32,45 @@ export class House {
   }
 
   // ---------- events from the seat ----------
-  push(prio, name, gen) { this.queue.push({ prio, name, gen }); this.queue.sort((a, b) => b.prio - a.prio); }
+  push(prio, name, gen, data) { this.queue.push({ prio, name, gen, data }); this.queue.sort((a, b) => b.prio - a.prio); }
+
+  // going to bed or out: accepted mail counts on the plaque at once, a letter he has not typed yet becomes a note,
+  // and only his mail and a pending install wait for him
+  rest(why) {
+    const s = this.state, items = this.current ? [...this.queue, this.current] : this.queue;
+    for (const q of items) if (q.name === 'mail' && q.data.good && !q.data.counted) { s.frames += q.data.n; q.data.counted = true; }
+    if (items.some((q) => q.name === 'letter')) this.leaveNote(why, true);
+    this.queue = this.queue.filter((q) => KEEP.includes(q.name));
+  }
+
+  leaveNote(why, late) { if (this.onLetterDone) this.onLetterDone(why, late); }
+
+  // a verdict: the carrier brings it at once, also at night or while he is out; he reads it when he is up
+  letterFor(good, n) {
+    const s = this.state, data = { good, n, counted: false, taken: false }, c = this.carrier;
+    if (c && c.kind === 'letter' && c.phase === 'in') c.letters++; else s.mailDue++;
+    if (good && (s.asleep || s.away)) { s.frames += n; data.counted = true; }
+    this.push(5, 'mail', () => this.mail(data), data);
+  }
+
+  leave() {
+    const m = this.man;
+    m.floor = 'out'; m.x = SPOTS.away.x; m.y = OUT_Y; m.face = -1; m.pose = 'stand'; m.hidden = true;
+  }
 
   event(e) {
     const s = this.state;
     switch (e.type) {
       case 'init':
-        s.asleep = e.asleep; s.working = e.working; s.frames = e.accepted; s.tvStatic = e.verifierDown;
+        s.asleep = e.asleep; s.away = !!e.paused; s.sign = s.away; s.working = e.working; s.frames = e.accepted; s.tvStatic = e.verifierDown;
         this.workKind = e.kind || this.workKind || 'cook';
         s.needsUpdate = !!(e.update && e.update.needs); s.parcel = s.needsUpdate;
         this.queue = []; this.current = null;
-        this.place(e.asleep ? 'bed' : e.working && this.workKind === 'computer' ? 'desk' : 'livingMid');
-        if (e.asleep) this.man.pose = 'sleep';
-        if (e.letter) this.push(2, 'letter', () => this.writeLetter());
+        if (s.away) this.leave();
+        else this.place(e.asleep ? 'bed' : e.working && this.workKind === 'computer' ? 'desk' : 'livingMid');
+        if (e.asleep && !s.away) this.man.pose = 'sleep';
+        if (e.letter && (s.away || e.asleep)) this.leaveNote(s.away ? 'away' : 'bed', false);
+        else if (e.letter) this.push(2, 'letter', () => this.writeLetter());
         break;
       case 'work': s.working = true; this.workKind = e.kind || 'cook'; this.push(3, 'work', () => this.work()); break;
       case 'workkind': case 'submitted':
@@ -54,41 +81,49 @@ export class House {
         break;
       case 'workdone': s.working = false; break;
       case 'post': this.push(4, 'post', () => this.post()); break;
-      case 'accepted': s.pendingFrames += e.n; this.push(5, 'mail', () => this.mail(true, e.n)); break;
-      case 'rejected': this.push(5, 'mail', () => this.mail(false, e.n)); break;
+      case 'accepted': case 'rejected': this.letterFor(e.type === 'accepted', e.n); break;
       case 'failed': s.smoke = true; this.push(7, 'smoke', () => this.fan()); break;
       case 'phone': s.phoneRinging = true; this.push(6, 'phone', () => this.answer()); break;
       case 'oracle': this.push(4, 'oracle', () => this.telescope()); break;
       case 'verifier': s.tvStatic = e.down; break;
-      case 'update': s.needsUpdate = true; if (!s.parcel && !this.carrier) this.carrier = this.newCarrier('parcel'); break;
+      case 'update': s.needsUpdate = true; if (!s.parcel && !(this.carrier && this.carrier.kind === 'parcel')) s.parcelDue = true; break;
       case 'updated': this.knockAck = true; this.push(5, 'install', () => this.install()); break;
       case 'knock':
-        if (!s.asleep && !this.queue.some((q) => q.name === 'knock') && !(this.current && this.current.name === 'knock')) {
+        if (!s.asleep && !s.away && !this.queue.some((q) => q.name === 'knock') && !(this.current && this.current.name === 'knock')) {
           this.knockInfo = e.info; this.push(8, 'knock', () => this.knock());
         }
         break;
       case 'sleep':
         s.asleep = true; s.smoke = false; s.phoneRinging = false;
-        s.frames += s.pendingFrames; s.pendingFrames = 0;
-        this.queue = []; this.push(9, 'sleep', () => this.sleep());
+        this.rest('bed');
+        this.push(9, 'sleep', () => this.sleep());
         break;
-      case 'wake': s.asleep = false; this.dog.wait = 0; this.dog.goal = null; break;
+      case 'wake': s.asleep = false; this.queue = this.queue.filter((q) => q.name !== 'sleep'); break;
+      case 'pause':
+        s.away = true; s.smoke = false; s.phoneRinging = false;
+        this.rest('away');
+        this.push(10, 'away', () => this.away());
+        break;
+      case 'resume': s.away = false; break;
       default: break;
     }
   }
 
   // ---------- the tick ----------
   tick(t) {
-    const top = this.queue[0];
-    if (top && (!this.current || top.prio > this.current.prio)) {
+    const s = this.state, top = this.queue[0];
+    const floor = s.away ? 10 : s.asleep ? 9 : 0;           // while he is out or asleep, nothing else starts
+    if (top && top.prio >= floor && (!this.current || top.prio > this.current.prio)) {
       this.queue.shift();
       const cur = this.current;
-      if (cur && cur.prio >= 4 && cur.name !== 'sleep') this.push(cur.prio, cur.name, cur.gen);   // resume it later
+      if (cur && cur.prio >= 4 && cur.name !== 'sleep' && (top.prio < 9 || KEEP.includes(cur.name))) {
+        this.push(cur.prio, cur.name, cur.gen, cur.data);                                      // resume it later
+      }
       this.start(top);
     }
     if (!this.current) {
-      const s = this.state;
-      if (s.asleep) this.start({ prio: 9, name: 'sleep', gen: () => this.sleep() });
+      if (s.away) this.start({ prio: 10, name: 'away', gen: () => this.away() });
+      else if (s.asleep) this.start({ prio: 9, name: 'sleep', gen: () => this.sleep() });
       else if (s.working) this.start({ prio: 3, name: 'work', gen: () => this.work() });
       else this.start(this.routine());
     }
@@ -148,7 +183,7 @@ export class House {
   *goTo(name) {
     const d = SPOTS[name], m = this.man;
     if (d.floor === 'out') {
-      yield* this.goTo('livingMid');
+      if (m.floor !== 'out' && m.floor !== 0) yield* this.goTo('livingMid');
       yield* this.walkX(d.x);
     } else {
       if (m.floor === 'out') yield* this.walkX(DOOR_X + 4);
@@ -177,7 +212,7 @@ export class House {
   // working on a task: where and how depends on the kind of task
   *work() {
     const s = this.state, m = this.man, kind = this.workKind || 'cook';
-    const spot = { computer: 'desk', telescope: 'telescope', book: 'shelf', tv: 'armchair', piano: 'piano', cook: 'stove' }[kind] || 'stove';
+    const spot = { computer: 'desk', telescope: 'telescope', book: 'shelf', tv: 'armchair', piano: 'piano', easel: 'easel', cook: 'stove' }[kind] || 'stove';
     yield* this.goTo(spot);
     let i = 0;
     while (s.working || i < sec(15)) {
@@ -186,11 +221,12 @@ export class House {
       else if (kind === 'book') { s.action = 'research'; m.pose = 'read'; m.book = P.red; }
       else if (kind === 'tv') { s.action = 'tv'; m.pose = 'tvsit'; m.seat = 12; }
       else if (kind === 'piano') { s.action = 'piano'; m.pose = 'piano'; m.seat = 10; m.icon = 'note'; if (i % 9 === 0) this.sound.note(); }
+      else if (kind === 'easel') { s.action = 'paint'; m.pose = (i % sec(12)) < sec(10) ? 'paint' : 'stand'; }    // a step back now and then
       else { s.action = 'cook'; m.pose = (i % sec(20)) < sec(16) ? 'cook' : 'eat'; }       // cooking, with a taste now and then
       if (i > 0 && i % sec(90) === 0 && kind !== 'tv') { m.pose = 'stretch'; for (let k = 0; k < sec(2); k++) yield; }
       i++;
       yield;
-      if (s.asleep || kind !== this.workKind) break;
+      if (s.asleep || s.away || kind !== this.workKind) break;
     }
     s.action = null; m.pose = 'stand'; m.icon = null; m.seat = 10;
   }
@@ -205,12 +241,14 @@ export class House {
     yield* this.goTo('livingMid');
   }
 
-  *mail(good, n) {
-    const s = this.state, m = this.man;
-    if (!s.mailWaiting && !this.carrier) this.carrier = this.newCarrier('letter');
-    while (!s.mailWaiting) yield;
-    yield* this.goTo('mailbox');
-    s.mailWaiting = false; m.carry = 'letter';
+  *mail(data) {
+    const s = this.state, m = this.man, good = data.good;
+    if (!data.taken) {
+      for (let i = 0; !s.mailbox && i < sec(60); i++) yield;     // the carrier is still on the way
+      yield* this.goTo('mailbox');
+      s.mailbox = Math.max(0, s.mailbox - 1); data.taken = true;
+    } else yield* this.goTo('mailbox');
+    m.carry = 'letter';
     yield* this.walkX(48);
     m.face = 1; m.carry = null;
     yield* this.act('readmail', 'readmail', 2.5, good ? 'heart' : 'dots');
@@ -221,7 +259,7 @@ export class House {
       yield* this.goTo('frames');
       m.carry = null;
       yield* this.act('hang', 'hang', 1.5);
-      s.frames += n; s.pendingFrames = Math.max(0, s.pendingFrames - n);
+      if (!data.counted) { s.frames += data.n; data.counted = true; }
     } else {
       this.sound.sad();
       yield* this.goTo('bedEdge');
@@ -231,17 +269,17 @@ export class House {
     }
   }
 
-  newCarrier(kind) { return { x: -16, y: OUT_Y, face: 1, step: 0, phase: 'in', wait: 0, kind, carry: kind }; }
+  newCarrier(kind) { return { x: -16, y: OUT_Y, face: 1, step: 0, phase: 'in', wait: 0, kind, carry: kind, letters: 0 }; }
 
   // the seat's worker changed version: fetch the parcel from the doorstep and install it at the computer
   *install() {
     const s = this.state, m = this.man;
     if (!s.parcel) {
-      if (!this.carrier) this.carrier = this.newCarrier('parcel');
-      for (let i = 0; i < sec(20) && !s.parcel; i++) yield;
+      if (!(this.carrier && this.carrier.kind === 'parcel')) s.parcelDue = true;
+      for (let i = 0; i < sec(40) && !s.parcel; i++) yield;
     }
     yield* this.goTo('parcel');
-    s.parcel = false; m.carry = 'parcel';
+    s.parcel = false; s.parcelDue = false; m.carry = 'parcel';
     yield* this.goTo('desk');
     m.carry = null; m.seat = 10;
     for (let i = 0; i <= sec(8); i++) { s.action = 'install'; m.pose = 'type'; s.installProgress = i / sec(8); if (i % 6 === 0) this.sound.tick(); yield; }
@@ -308,6 +346,26 @@ export class House {
     yield* this.act('stretch', 'stretch', 2);
   }
 
+  // the owner paused the seat: he hangs a sign on the front door and goes out until the seat is on again
+  *away() {
+    const s = this.state, m = this.man;
+    if (!m.hidden) {
+      yield* this.goTo('doorOut');
+      yield* this.act('sign', 'reach', 1.2);
+      s.sign = true;
+      yield* this.walkX(SPOTS.away.x);
+      m.hidden = true;
+    }
+    while (s.away) yield;
+    m.hidden = false;
+    yield* this.walkX(SPOTS.doorOut.x);
+    m.face = 1;
+    yield* this.act('sign', 'reach', 1);
+    s.sign = false;
+    yield* this.goTo('livingMid');
+    yield* this.act('home', 'stand', 1.5, 'heart');
+  }
+
   *writeLetter() {
     yield* this.goTo('desk');
     const m = this.man;
@@ -364,8 +422,14 @@ export class House {
   dogTo(x, pose, s) { const d = this.dog; d.target = Math.max(66, Math.min(350, x)); d.goal = pose; d.wait = sec(s); }
 
   tickDog() {
-    const d = this.dog, m = this.man;
-    if (this.state.asleep && d.goal !== 'sleep') { d.target = 322; d.goal = 'sleep'; d.wait = 1e9; }
+    const d = this.dog, m = this.man, s = this.state;
+    const mode = s.away ? 'door' : s.asleep ? 'sleep' : null;     // while he is out the dog waits by the door
+    if (mode !== d.mode) {
+      d.mode = mode;
+      if (mode === 'door') { d.target = 68; d.goal = 'sit'; d.wait = 1e9; }
+      else if (mode === 'sleep') { d.target = 322; d.goal = 'sleep'; d.wait = 1e9; }
+      else { d.wait = 0; d.goal = null; }
+    }
     if (d.target != null) {
       if (Math.abs(d.x - d.target) > 0.6) { d.face = d.target > d.x ? 1 : -1; d.x += d.face * 0.9; d.pose = 'walk'; d.step++; return; }
       d.target = null; d.pose = d.goal || 'sit';
@@ -380,14 +444,19 @@ export class House {
   }
 
   tickCarrier() {
+    const s = this.state;
+    if (!this.carrier) {
+      if (s.mailDue > 0) { this.carrier = this.newCarrier('letter'); this.carrier.letters = s.mailDue; s.mailDue = 0; }
+      else if (s.parcelDue) { this.carrier = this.newCarrier('parcel'); s.parcelDue = false; }
+      else return;
+    }
     const c = this.carrier;
-    if (!c) return;
     c.step++;
     const stop = c.kind === 'parcel' ? 36 : 8;
     if (c.phase === 'in') { c.face = 1; c.x += 0.9; c.pose = 'walk'; if (c.x >= stop) { c.phase = 'drop'; c.wait = sec(1); c.pose = 'stand'; } }
     else if (c.phase === 'drop') {
       if (--c.wait <= 0) {
-        if (c.kind === 'parcel') this.state.parcel = true; else { this.state.mailWaiting = true; this.state.outgoing = 0; }
+        if (c.kind === 'parcel') s.parcel = true; else { s.mailbox += c.letters; s.outgoing = 0; }
         c.carry = null; this.sound.clunk(); c.phase = 'out';
       }
     }
