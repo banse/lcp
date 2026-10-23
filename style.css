@@ -94,3 +94,17 @@ code { font-family: var(--type); font-size: 0.95em; }
 .knock p { margin: 0; max-width: 70ch; }
 .knock code { background: #ebe1c6; padding: 0 4px; }
 .knock button { justify-self: start; }
+
+.legend { max-width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; padding: 18px 20px;
+  background: var(--paper); color: var(--paper-ink); border: 3px solid var(--wood); box-shadow: 6px 6px 0 var(--wood); }
+.legend::backdrop { background: rgba(10, 12, 32, 0.7); }
+.legend h2 { margin: 0 0 8px; font-size: 1.35rem; }
+.legend table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; font-size: 0.95rem; }
+.legend th { text-align: left; font-weight: 600; border-bottom: 2px solid var(--wood-l); padding: 6px 8px; }
+.legend td { border-bottom: 1px solid #e4d8b8; padding: 6px 8px; vertical-align: top; }
+.legend td:first-child { width: 58%; }
+.small-ink { margin: 0; font-size: 0.92rem; color: #5a4632; max-width: 70ch; }
+.legend form { margin: 4px 0 0; }
+.legend-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 8px; }
+.legend-head h2 { margin: 0; }
+.quiet-ink { background: transparent; color: var(--paper-ink); border-color: var(--wood-l); }

@@ -36,6 +36,7 @@
     </form>
     <div class="toggles">
       <button type="button" id="wallet-btn">Connect wallet</button>
+      <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog">Legend</button>
       <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
       <button type="button" id="sound-btn" class="quiet" aria-pressed="false">Sound off</button>
     </div>
@@ -71,6 +72,43 @@
       </article>
     </div>
   </section>
+
+  <dialog id="legend" class="legend" aria-labelledby="legend-title">
+    <form method="dialog" class="legend-head"><h2 id="legend-title">What he does, and why</h2><button type="submit" class="quiet-ink" autofocus>Close</button></form>
+    <p class="small-ink">Everything in the house comes from the seat's public record. While the seat works on a task, the kind of task decides where he goes:</p>
+    <table>
+      <thead><tr><th scope="col">The seat works on</th><th scope="col">He</th></tr></thead>
+      <tbody>
+        <tr><td>Token launch work: any step of a launch that makes a token (custom token, v4 hook, coin)</td><td>works at the computer in the study</td></tr>
+        <tr><td>Websites: building or reviewing a site or a contract's front end</td><td>cooks at the stove</td></tr>
+        <tr><td>Everything else: contracts-only launches, images, plain jobs</td><td>cooks at the stove</td></tr>
+        <tr><td>Research reports</td><td>reads a book by the shelf</td></tr>
+        <tr><td>Video</td><td>watches TV in the armchair</td></tr>
+        <tr><td>Audio and music</td><td>plays the piano</td></tr>
+        <tr><td>Oracle questions, or a seat on an oracle panel</td><td>looks through the telescope</td></tr>
+      </tbody>
+    </table>
+    <p class="small-ink">A task shows up in the record only once it is posted. Until then he picks what the seat usually does ("probably" in the diary) and switches if the posted task says otherwise.</p>
+    <table>
+      <thead><tr><th scope="col">In the house</th><th scope="col">Means</th></tr></thead>
+      <tbody>
+        <tr><td>The phone rings</td><td>work is queued for the seat</td></tr>
+        <tr><td>He posts a letter in the mailbox</td><td>the seat submitted a result</td></tr>
+        <tr><td>The mail carrier brings a letter, he dances and hangs a picture</td><td>a result was accepted; the plaque counts every accepted result</td></tr>
+        <tr><td>He reads a letter and sits on his bed for a while</td><td>a result was rejected</td></tr>
+        <tr><td>His computer smokes and he fans it</td><td>a run failed</td></tr>
+        <tr><td>The TV shows static</td><td>the swarm's checker is down</td></tr>
+        <tr><td>He naps in the armchair, lights on</td><td>no work for more than 12 hours</td></tr>
+        <tr><td>Lights out, he sleeps in bed</td><td>the seat is offline, or had no task for three days</td></tr>
+        <tr><td>A parcel at the door, a blinking badge on the computer</td><td>the seat runs an older worker than the newest release</td></tr>
+        <tr><td>He fetches the parcel and installs it</td><td>the seat updated its worker</td></tr>
+        <tr><td>He knocks on the glass</td><td>shown only to the seat's owner: the worker needs an update</td></tr>
+        <tr><td>He types you a letter</td><td>once a day: what the seat did since your last visit</td></tr>
+      </tbody>
+    </table>
+    <p class="small-ink">Between tasks he follows his own routine (TV, piano, records, cooking, a book, exercise, the dog, the plants). That part is just him.</p>
+    <form method="dialog"><button type="submit" id="legend-close">Close</button></form>
+  </dialog>
 
   <footer class="foot">
     <p>Data: <code>api.imd.fun/swarm</code> and <code>/oracle/requests</code>, read every 30 seconds while this tab is open. The wallet is only asked for its address. Local test build; not affiliated with Activision or Identity.md.</p>

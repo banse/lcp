@@ -345,6 +345,11 @@ $('wallet-forget').addEventListener('click', () => {
 // ---------- the rest of the controls ----------
 $('seat-form').addEventListener('submit', (e) => { e.preventDefault(); const v = $('seat-input').value; if (v !== '') visit(v); });
 $('random-btn').addEventListener('click', randomBusySeat);
+$('legend-btn').addEventListener('click', () => {
+  const d = $('legend');
+  if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+  d.scrollTop = 0;
+});
 $('demo-btn').addEventListener('click', () => (mode === 'demo' ? randomBusySeat() : startDemo()));
 $('sound-btn').addEventListener('click', () => {
   const on = !sound.on; sound.enable(on);
