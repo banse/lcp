@@ -71,7 +71,7 @@ export function drawPerson(g, p, t, L) {
       if (p.carry === 'frame') { R2(4, -16, 6, 6, P.yellow); R2(5, -15, 4, 4, P.green); }
       break;
     }
-    case 'sit': case 'type': case 'review': case 'piano': case 'tvsit': case 'sad': {
+    case 'sit': case 'type': case 'review': case 'piano': case 'tvsit': case 'sad': case 'nap': {
       const seat = p.seat || 10;
       seated(R, L, seat, (s) => {
         if (p.pose === 'type' || p.pose === 'piano') {
@@ -84,6 +84,7 @@ export function drawPerson(g, p, t, L) {
         } else { R(0, s - 8, 2, 6, L.shirt); R(1, s - 3, 3, 2, L.skin); }
       });
       if (p.pose === 'sad') R(-3, -seat - 19, 7, 1, L.hair);
+      if (p.pose === 'nap') R(1, -seat - 16, 1, 2, L.skin);            // eye closed
       break;
     }
     case 'sleep': {                                      // lying in bed, head on the pillow

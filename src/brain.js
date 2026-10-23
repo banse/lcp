@@ -24,7 +24,7 @@ export class House {
     let h = (seed * 40503 + 7) >>> 0;
     const r = () => { h = (h * 1664525 + 1013904223) >>> 0; return 0.4 + (h >>> 8) / 16777216 * 1.6; };
     this.weights = { tv: r(), piano: r(), records: r(), cook: r(), snack: r(), book: r(), exercise: r(), shower: r(),
-      brush: r() * 0.6, feedDog: r(), petDog: r(), water: r() * 0.7, fire: r() * 0.7, window: r() * 0.6, mailcheck: 0.3 };
+      brush: r() * 0.6, feedDog: r(), petDog: r(), water: r() * 0.7, fire: r() * 0.7, window: r() * 0.6, mailcheck: 0.3, nap: 0.2 };
   }
 
   // ---------- events from the seat ----------
@@ -87,6 +87,8 @@ export class House {
   start(item) {
     this.man.icon = null; this.man.carry = null; this.state.action = null;
     if (this.man.pose === 'sleep' && item.name !== 'sleep') this.place('bed', true);
+    const m = this.man;
+    if (m.pose !== 'sleep') m.y = m.floor === 'out' ? OUT_Y : FLOOR_Y[m.floor];   // an interrupted climb lands him on his floor
     this.current = { ...item, it: item.gen() };
   }
 
@@ -248,8 +250,9 @@ export class House {
   // ---------- his own routine ----------
   routine() {
     const now = Date.now();
-    let opts = Object.entries(this.weights).filter(([k]) => !(this.cooldown[k] > now));
-    if (!opts.length) { this.cooldown = {}; opts = Object.entries(this.weights); }
+    const w = { ...this.weights, nap: (this.idleHours || 0) > 12 ? 3 : this.weights.nap };   // long lulls: more naps
+    let opts = Object.entries(w).filter(([k]) => !(this.cooldown[k] > now));
+    if (!opts.length) { this.cooldown = {}; opts = Object.entries(w); }
     let total = opts.reduce((a, [, w]) => a + w, 0), r = Math.random() * total, pick = opts[0][0];
     for (const [k, w] of opts) { r -= w; if (r <= 0) { pick = k; break; } }
     this.cooldown[pick] = now + 90000 + Math.random() * 120000;
@@ -281,6 +284,7 @@ export class House {
       *water() { yield* this.goTo('plant'); yield* this.act('water', 'water', 5); },
       *fire() { yield* this.goTo('fire'); yield* this.act('fire', 'stoke', 4); yield* this.goTo('armchair'); this.man.seat = 12; yield* this.act('rest', 'tvsit', 8); this.man.seat = 10; },
       *window() { const w = Math.random() < 0.5 ? 'kitchenWin' : 'bedWin'; yield* this.goTo(w); yield* this.act('window', 'stand', 6, Math.random() < 0.5 ? 'ask' : 'heart'); },
+      *nap() { yield* this.goTo('armchair'); this.man.seat = 12; yield* this.act('nap', 'nap', 25 + Math.random() * 20, 'z'); this.man.seat = 10; },
       *mailcheck() { yield* this.goTo('mailbox'); yield* this.act('mailcheck', 'stand', 2, 'ask'); yield* this.goTo('livingMid'); },
     };
   }

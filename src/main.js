@@ -121,14 +121,14 @@ const SAY = {
   phone: () => 'The phone rings: work is waiting for him.',
   oracle: () => 'He looks through the telescope: his seat sits on an oracle panel.',
   verifier: (e) => e.down ? 'The TV shows static: the swarm\'s checker is down.' : 'The TV works again: the checker is back.',
-  sleep: () => 'Lights out. The seat has gone quiet.',
+  sleep: () => 'Lights out. The seat left the network or has had no task for three days.',
   wake: () => 'He\'s up again: the seat is back.',
 };
 
 function onEvent(e) {
   if (!house) return;
   if (e.type === 'init') {
-    const st = e.asleep ? 'He\'s asleep: the seat has been quiet for six hours or more.' : e.working ? 'He\'s at his computer, working.' : 'He\'s at home, between tasks.';
+    const st = e.asleep ? 'He\'s asleep: the seat left the network or has had no task for three days.' : e.working ? 'He\'s at his computer, working.' : 'He\'s at home, between tasks.';
     addDiary(mode === 'demo' ? 'The demo starts. ' + st : `You're visiting seat #${e.seat}. ${st}`);
     if (mode === 'live') e.letter = prepareLetter(e.seat, e.data, e.asleep);
     else { pendingLetter = demoLetter(); e.letter = true; }
@@ -138,13 +138,14 @@ function onEvent(e) {
 
 function onStatus(s) {
   if (s.error) { $('st-line').textContent = 'Can\'t reach the swarm (' + s.error + '). Retrying.'; return; }
+  if (house) house.idleHours = s.idleHours || 0;
   const d = s.data;
   for (const k of ['attempts', 'accepted', 'rejected', 'failed']) $('st-' + k).textContent = d ? Number(d[k]).toLocaleString('en-US') : '–';
   $('st-head').textContent = s.seat === 'demo' ? 'The demo seat' : `Seat #${s.seat}`;
   const bits = [];
   if (!d) bits.push('This seat has no record in the swarm yet.');
   else {
-    bits.push(d.working ? 'Working now.' : s.asleep ? 'Asleep.' : 'Awake.');
+    bits.push(d.working ? 'Working now.' : s.asleep ? 'Asleep.' : s.idleHours > 12 ? 'Awake, but no work for a while.' : 'Awake.');
     if (d.agentId) bits.push(`Agent ${d.agentId}.`);
     if (d.last) bits.push('Last task ' + ago(Date.parse(d.last)) + '.');
   }

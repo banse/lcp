@@ -1,7 +1,9 @@
 // Seat data. LiveFeed polls the public /swarm route (CORS *) and the oracle panels; DemoFeed replays every event.
 // Both call onEvent({type, ...}) and onStatus(status). Nothing else leaves the page.
 const API = 'https://api.imd.fun';
-const POLL_MS = 30000, ORACLE_MS = 300000, QUIET_MS = 6 * 3600 * 1000;
+// Asleep = the daemon looks offline: an "agent left" event, or no task for 72 h. Measured 2026-10-24 00:07 UTC:
+// 1,026 of 1,055 seats online, yet 86 % had no task for 6 h; at 72 h 22 % read as asleep.
+const POLL_MS = 30000, ORACLE_MS = 300000, QUIET_MS = 72 * 3600 * 1000;
 
 export function isAsleep(seat, now = Date.now()) {
   if (!seat || !seat.last) return true;
@@ -60,7 +62,8 @@ export class LiveFeed {
       }
       const asleep = isAsleep(cur, now) || (this.leftAt != null && !(cur && cur.working));
       const verifierDown = sw.health && sw.health.verifierUp === false;
-      const status = { seat: id, data: cur, asleep, verifierDown, at: new Date(), live: true, health: sw.health };
+      const idleHours = cur && cur.last && !cur.working ? (now - Date.parse(cur.last)) / 3600000 : 0;
+      const status = { seat: id, data: cur, asleep, verifierDown, idleHours, at: new Date(), live: true, health: sw.health };
       if (!this.prev) {
         this.onEvent({ type: 'init', seat: id, data: cur, asleep, working: !!(cur && cur.working),
           accepted: cur ? cur.accepted : 0, verifierDown });
