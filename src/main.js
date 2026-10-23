@@ -90,7 +90,7 @@ function startDemo() {
   house.onKnock = showKnock; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
   setTitle('Demo: a made-up seat, one fast day', null);
-  $('lede').textContent = 'Every event the house knows, in about four minutes: the phone, work, a posted result, good and bad mail, an oracle panel, a failed run, a worker update, the checker going down, sleep.';
+  $('lede').textContent = 'Every event the house knows, in about four and a half minutes: the phone, each kind of work (token launch at the computer, websites and other tasks at the stove, research, video, audio, oracles), mail, a failed run, a worker update, the checker going down, sleep.';
   $('demo-btn').setAttribute('aria-pressed', 'true');
   if (location.hash !== '#demo') history.replaceState(null, '', '#demo');
   demo.start();
@@ -119,7 +119,9 @@ function route() {
 
 // ---------- events into the house and the diary ----------
 const SAY = {
-  work: (e) => `He sat down at the computer: a new task${e.role ? ' (' + e.role + ')' : ''}.`,
+  work: (e) => workLine(e),
+  workkind: (e) => workLine(e, true),
+  submitted: (e) => `He posted a result: that was ${e.label}${e.task && e.task.nodeKey ? ' (' + e.task.nodeKey + ')' : ''}.`,
   workdone: () => 'He finished the task and got up.',
   post: (e) => e.n > 1 ? `He posted ${e.n} results in the mailbox.` : 'He posted a result in the mailbox.',
   accepted: (e) => e.n > 1 ? `Good news in the mail: ${e.n} accepted. New pictures go on the wall.` : 'Good news in the mail: accepted. A new picture goes on the wall.',
@@ -134,10 +136,19 @@ const SAY = {
   updated: (e) => `The seat updated its worker to ${e.to}. He unpacks the parcel and installs it.`,
 };
 
+const WORK_SAY = {
+  computer: 'He sits down at the computer', telescope: 'He goes to the telescope', book: 'He takes a book from the shelf',
+  tv: 'He sits down in front of the TV', piano: 'He sits down at the piano', cook: 'He starts cooking',
+};
+function workLine(e, change) {
+  const base = (WORK_SAY[e.kind] || 'He starts working') + ': ' + (e.label || 'a task');
+  return base + (e.step ? ' (' + e.step + ')' : '') + (e.guess ? ', probably, going by his recent work.' : '.') + (change ? '' : '');
+}
+
 function onEvent(e) {
   if (!house) return;
   if (e.type === 'init') {
-    const st = e.asleep ? 'He\'s asleep: the seat left the network or has had no task for three days.' : e.working ? 'He\'s at his computer, working.' : 'He\'s at home, between tasks.';
+    const st = e.asleep ? 'He\'s asleep: the seat left the network or has had no task for three days.' : e.working ? 'He\'s working on ' + (e.label || 'a task') + (e.guess ? ' (probably, going by his recent work).' : '.') : 'He\'s at home, between tasks.';
     addDiary(mode === 'demo' ? 'The demo starts. ' + st : `You're visiting seat #${e.seat}. ${st}`);
     if (e.update && e.update.needs) addDiary(`A parcel waits at his door: the seat runs ${e.update.current}, and the newest worker is ${e.update.latest}.`);
     if (mode === 'live') e.letter = prepareLetter(e.seat, e.data, e.asleep);

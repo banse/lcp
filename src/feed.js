@@ -11,11 +11,51 @@ export function isAsleep(seat, now = Date.now()) {
   return now - Date.parse(seat.last) > QUIET_MS;
 }
 
-function roleFor(events, id) {
-  const mine = (events || []).filter((e) => String(e.tokenId) === String(id) && (e.role || e.step));
-  if (!mine.length) return '';
+function liveTask(events, id) {
+  const mine = (events || []).filter((e) => String(e.tokenId) === String(id) && (e.step || e.nodeKey || e.role));
+  if (!mine.length) return null;
   mine.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  return mine[0].role || mine[0].step || '';
+  const e = mine[0];
+  return { nodeKey: e.step || e.nodeKey || '', role: e.role || '', launch: e.launch || null, objective: e.objective || '' };
+}
+
+// What he does for a task (owner's mapping, 2026-10-24): oracle = telescope, research = book, video = TV,
+// audio = piano, websites = cooking, token launch work = computer, everything else = cooking.
+const TOKEN_LAUNCHES = ['custom_token', 'evm_project', 'univ4_hook'];
+export function taskKind(t) {
+  if (!t) return null;
+  const k = (t.nodeKey || '').toLowerCase(), o = (t.objective || '').toLowerCase();
+  if (/oracle/.test(k)) return 'telescope';
+  if (/research/.test(k)) return 'book';
+  if (/video/.test(k) || /\bvideo\b/.test(o.slice(0, 60))) return 'tv';
+  if (/audio|music|sound|song|voice|podcast/.test(k) || /\b(audio|music|song|soundtrack|podcast)\b/.test(o.slice(0, 60))) return 'piano';
+  if (/website|site|frontend|design_critic|landing/.test(k)) return 'cook';
+  if (TOKEN_LAUNCHES.includes(t.launch)) return 'computer';
+  return 'cook';
+}
+
+export const KIND_SAY = {
+  telescope: 'an oracle question', book: 'a research task', tv: 'a video task', piano: 'an audio task',
+  computer: 'token launch work', cook: 'a task',
+};
+
+export function describeTask(t) {
+  const kind = taskKind(t);
+  if (!t) return '';
+  if (kind === 'cook') {
+    if (/website|site|frontend|design_critic|landing/.test((t.nodeKey || '').toLowerCase())) return 'a website';
+    if (t.launch) return 'a launch task (' + t.launch + ')';
+    return 'a task';
+  }
+  return KIND_SAY[kind];
+}
+
+// the seat's usual kind of work, from its newest tasks
+function usualKind(recent) {
+  const c = {};
+  for (const t of (recent || []).slice(0, 10)) { const k = taskKind(t); c[k] = (c[k] || 0) + 1; }
+  const best = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : null;
 }
 
 // ---------- worker releases (GitHub, CORS *) and the seat's version ----------
@@ -88,6 +128,17 @@ export class LiveFeed {
 
   stop() { this.seat = null; clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer); }
 
+  // the task he starts: the live event if it names the step, else his usual kind of work
+  guessWork(events) {
+    const t = liveTask(events, this.seat);
+    if (t && t.nodeKey) {
+      const kind = taskKind(t);
+      if (kind !== 'cook' || /website|site|frontend|design_critic/.test(t.nodeKey)) return { kind, label: describeTask(t), step: t.nodeKey };
+    }
+    const usual = usualKind(this.detail && this.detail.recent);
+    return usual ? { kind: usual, label: KIND_SAY[usual], guess: true } : { kind: 'cook', label: 'a task', guess: true };
+  }
+
   // the seat record (online, worker version) through the local relay, and the newest worker release
   async checkDetail(first = false) {
     clearTimeout(this.detailTimer);
@@ -100,6 +151,10 @@ export class LiveFeed {
     try { rel = await workerReleases(); } catch (e) { /* GitHub unreachable or rate limited */ }
     if (id !== this.seat) return;
     const before = this.detail, upd = det ? updateStatus(det.daemonVersion, rel) : null;
+    const newest = det && det.recent && det.recent[0], prevNewest = before && before.recent && before.recent[0];
+    if (!first && newest && (!prevNewest || newest.submittedAt !== prevNewest.submittedAt || newest.jobId !== prevNewest.jobId)) {
+      this.onEvent({ type: 'submitted', task: newest, kind: taskKind(newest), label: describeTask(newest) });
+    }
     this.detail = det; this.releases = rel;
     if (!first && before && det && before.daemonVersion && det.daemonVersion && before.daemonVersion !== det.daemonVersion) {
       this.onEvent({ type: 'updated', from: before.daemonVersion, to: det.daemonVersion, info: upd });
@@ -137,9 +192,10 @@ export class LiveFeed {
         online, version: this.detail ? this.detail.daemonVersion : null, update: this.update, detailRead: !!this.detail };
       if (!this.prev) {
         this.onEvent({ type: 'init', seat: id, data: cur, asleep, working: !!(cur && cur.working),
-          accepted: cur ? cur.accepted : 0, verifierDown, update: this.update });
+          accepted: cur ? cur.accepted : 0, verifierDown, update: this.update, ...(cur && cur.working ? this.guessWork(sw.events) : {}) });
       } else {
-        if (Date.now() - this.lastDetailAt > 2 * 60000 && cur && prevChanged(this.prev.data, cur)) this.checkDetail();
+        const posted = cur && this.prev.data && cur.attempts !== this.prev.data.attempts;
+        if (cur && (posted || (Date.now() - this.lastDetailAt > 2 * 60000 && prevChanged(this.prev.data, cur)))) setTimeout(() => this.checkDetail(), posted ? 1500 : 0);
         this.diff(this.prev, cur, asleep, verifierDown, sw.events);
       }
       this.prev = { data: cur, asleep, verifierDown };
@@ -156,7 +212,7 @@ export class LiveFeed {
     const p = prev.data || {}, c = cur || {};
     const d = (k) => (c[k] || 0) - (p[k] || 0);
     if (prev.asleep && !asleep) this.onEvent({ type: 'wake' });
-    if (!p.working && c.working) this.onEvent({ type: 'work', role: roleFor(events, this.seat) });
+    if (!p.working && c.working) this.onEvent({ type: 'work', ...this.guessWork(events) });
     if (p.working && !c.working) this.onEvent({ type: 'workdone' });
     if (d('attempts') > 0) this.onEvent({ type: 'post', n: d('attempts') });
     if (d('accepted') > 0) this.onEvent({ type: 'accepted', n: d('accepted') });
@@ -205,22 +261,27 @@ export class DemoFeed {
     this.stop();
     const D = this.data;
     const status = (asleep = false, verifierDown = false) => this.onStatus({ seat: 'demo', data: { ...D }, asleep, verifierDown, at: new Date(), live: false });
+    const kind = (k, label) => ({ type: 'work', kind: k, label });
     const plan = [
       [0, () => { this.onEvent({ type: 'init', seat: 'demo', data: D, asleep: false, working: false, accepted: D.accepted, verifierDown: false, letter: true }); status(); }],
       [14, () => { D.queued = 1; this.onEvent({ type: 'phone' }); status(); }],
-      [22, () => { D.queued = 0; D.working = true; this.onEvent({ type: 'work', role: 'implement' }); status(); }],
-      [42, () => { D.attempts++; this.onEvent({ type: 'post', n: 1 }); status(); }],
-      [56, () => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(); }],
-      [80, () => { this.onEvent({ type: 'oracle' }); status(); }],
-      [104, () => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }],
-      [118, () => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }],
-      [140, () => { this.onEvent({ type: 'update', info: { current: '0.1.4+011c9f4c', latest: '0.1.4+1103e27b', behind: 3, latestAgeH: 7, needs: true } }); status(); }],
-      [168, () => { this.onEvent({ type: 'updated', from: '0.1.4+011c9f4c', to: '0.1.4+1103e27b', info: { needs: false } }); status(); }],
-      [196, () => { this.onEvent({ type: 'verifier', down: true }); status(false, true); }],
-      [208, () => { this.onEvent({ type: 'verifier', down: false }); status(); }],
-      [214, () => { this.onEvent({ type: 'sleep' }); status(true); }],
-      [232, () => { this.onEvent({ type: 'wake' }); status(); }],
-      [244, () => this.start()],
+      [22, () => { D.queued = 0; D.working = true; this.onEvent(kind('computer', 'token launch work')); status(); }],
+      [40, () => { D.attempts++; this.onEvent({ type: 'post', n: 1 }); this.onEvent({ type: 'submitted', kind: 'computer', label: 'token launch work', task: { nodeKey: 'build_contract_project' } }); status(); }],
+      [52, () => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(); }],
+      [62, () => { this.onEvent({ type: 'workkind', kind: 'cook', label: 'a website' }); status(); }],
+      [76, () => { this.onEvent({ type: 'workkind', kind: 'book', label: 'a research task' }); status(); }],
+      [90, () => { this.onEvent({ type: 'workkind', kind: 'tv', label: 'a video task' }); status(); }],
+      [104, () => { this.onEvent({ type: 'workkind', kind: 'piano', label: 'an audio task' }); status(); }],
+      [118, () => { this.onEvent({ type: 'workkind', kind: 'telescope', label: 'an oracle question' }); status(); }],
+      [134, () => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }],
+      [146, () => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }],
+      [160, () => { this.onEvent({ type: 'update', info: { current: '0.1.4+011c9f4c', latest: '0.1.4+1103e27b', behind: 3, latestAgeH: 7, needs: true } }); status(); }],
+      [190, () => { this.onEvent({ type: 'updated', from: '0.1.4+011c9f4c', to: '0.1.4+1103e27b', info: { needs: false } }); status(); }],
+      [214, () => { this.onEvent({ type: 'verifier', down: true }); status(false, true); }],
+      [226, () => { this.onEvent({ type: 'verifier', down: false }); status(); }],
+      [232, () => { this.onEvent({ type: 'sleep' }); status(true); }],
+      [250, () => { this.onEvent({ type: 'wake' }); status(); }],
+      [262, () => this.start()],
     ];
     for (const [s, fn] of plan) this.timers.push(setTimeout(fn, s * 1000));
   }

@@ -38,13 +38,20 @@ export class House {
     switch (e.type) {
       case 'init':
         s.asleep = e.asleep; s.working = e.working; s.frames = e.accepted; s.tvStatic = e.verifierDown;
+        this.workKind = e.kind || this.workKind || 'cook';
         s.needsUpdate = !!(e.update && e.update.needs); s.parcel = s.needsUpdate;
         this.queue = []; this.current = null;
-        this.place(e.asleep ? 'bed' : e.working ? 'desk' : 'livingMid');
+        this.place(e.asleep ? 'bed' : e.working && this.workKind === 'computer' ? 'desk' : 'livingMid');
         if (e.asleep) this.man.pose = 'sleep';
         if (e.letter) this.push(2, 'letter', () => this.writeLetter());
         break;
-      case 'work': s.working = true; this.workRole = e.role; this.push(3, 'work', () => this.work()); break;
+      case 'work': s.working = true; this.workKind = e.kind || 'cook'; this.push(3, 'work', () => this.work()); break;
+      case 'workkind': case 'submitted':
+        if (s.working && e.kind && e.kind !== this.workKind) {
+          this.workKind = e.kind;
+          if (this.current && this.current.name === 'work') this.current = null;   // start over with the right activity
+        }
+        break;
       case 'workdone': s.working = false; break;
       case 'post': this.push(4, 'post', () => this.post()); break;
       case 'accepted': s.pendingFrames += e.n; this.push(5, 'mail', () => this.mail(true, e.n)); break;
@@ -167,24 +174,25 @@ export class House {
   }
 
   // ---------- activities for seat events ----------
+  // working on a task: where and how depends on the kind of task
   *work() {
-    const s = this.state, m = this.man, role = this.workRole || '';
-    if (/research/.test(role)) {
-      yield* this.goTo('shelf');
-      yield* this.act('research', 'read', 6, null);
-    }
-    yield* this.goTo('desk');
-    const pose = /review|audit|judge|critic/.test(role) ? 'review' : 'type';
+    const s = this.state, m = this.man, kind = this.workKind || 'cook';
+    const spot = { computer: 'desk', telescope: 'telescope', book: 'shelf', tv: 'armchair', piano: 'piano', cook: 'stove' }[kind] || 'stove';
+    yield* this.goTo(spot);
     let i = 0;
     while (s.working || i < sec(15)) {
-      s.action = pose === 'review' ? 'review' : 'type'; m.pose = pose; m.seat = 10;
-      if (pose === 'type' && i % 5 === 0) this.sound.tick();
-      if (i > 0 && i % sec(90) === 0) { m.pose = 'stretch'; for (let k = 0; k < sec(2); k++) yield; }
+      if (kind === 'computer') { s.action = 'type'; m.pose = 'type'; m.seat = 10; if (i % 5 === 0) this.sound.tick(); }
+      else if (kind === 'telescope') { s.action = 'telescope'; m.pose = 'telescope'; m.icon = 'star'; }
+      else if (kind === 'book') { s.action = 'research'; m.pose = 'read'; m.book = P.red; }
+      else if (kind === 'tv') { s.action = 'tv'; m.pose = 'tvsit'; m.seat = 12; }
+      else if (kind === 'piano') { s.action = 'piano'; m.pose = 'piano'; m.seat = 10; m.icon = 'note'; if (i % 9 === 0) this.sound.note(); }
+      else { s.action = 'cook'; m.pose = (i % sec(20)) < sec(16) ? 'cook' : 'eat'; }       // cooking, with a taste now and then
+      if (i > 0 && i % sec(90) === 0 && kind !== 'tv') { m.pose = 'stretch'; for (let k = 0; k < sec(2); k++) yield; }
       i++;
       yield;
-      if (s.asleep) return;
+      if (s.asleep || kind !== this.workKind) break;
     }
-    s.action = null; m.pose = 'stand';
+    s.action = null; m.pose = 'stand'; m.icon = null; m.seat = 10;
   }
 
   *post() {

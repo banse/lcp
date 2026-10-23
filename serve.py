@@ -2,8 +2,9 @@
 
     python3 -I serve.py . 8795
 
-/proxy/seats/<n> (n = 0..1999) returns four fields of api.imd.fun/seats/<n>: tokenId, online, daemonVersion,
-pausedByOwnerAt. That route sends no CORS header, so a browser cannot read it directly; the full record is
+/proxy/seats/<n> (n = 0..1999) returns a few fields of api.imd.fun/seats/<n>: tokenId, online, daemonVersion,
+pausedByOwnerAt and the 20 newest tasks (nodeKey, role, launch kind, status, submittedAt, the first 100 characters
+of the objective). That route sends no CORS header, so a browser cannot read it directly; the full record is
 0.2-0.8 MB, so the relay trims it and caches it for 60 s. Listens on 127.0.0.1 only.
 """
 import functools
@@ -31,7 +32,11 @@ def seat_record(n):
             raw = gzip.decompress(raw)
     d = json.loads(raw)
     d = d.get('seat', d)
-    body = json.dumps({k: d.get(k) for k in FIELDS}).encode()
+    out = {k: d.get(k) for k in FIELDS}
+    out['recent'] = [{'nodeKey': t.get('nodeKey'), 'role': t.get('role'), 'launch': t.get('launch'), 'status': t.get('status'),
+                      'submittedAt': t.get('submittedAt'), 'jobId': t.get('jobId'), 'objective': (t.get('objective') or '')[:100]}
+                     for t in (d.get('work') or [])[:20]]
+    body = json.dumps(out).encode()
     CACHE[n] = (time.time(), body)
     return body
 

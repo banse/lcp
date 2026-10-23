@@ -40,5 +40,13 @@ A browser wallet only injects into http pages, so serve it rather than opening t
   thuds with sound on). A banner names the seat's worker, the newest one and how to update (`imd update` and a
   restart, or `--auto-update`). "Got it" stops it for 6 h on that version; otherwise he knocks again every 30 min.
   Visitors who don't own the seat see only the parcel. The demo knocks so the scene can be seen.
+- What he does while the seat works depends on the task (owner's mapping, 2026-10-24), first match wins:
+  oracle step = telescope; research = reads a book at the shelf; video = watches TV; audio/music = piano;
+  websites (`build_website`, `frontend_for_contract`, `design_critic`, site) = cooking; token launch work
+  (task `launch` is `custom_token`, `univ4_hook` or `evm_project`) = the computer; everything else (other launch
+  kinds such as `evm_contracts`, images, plain jobs) = cooking. The running task is not in the seat record until
+  it is posted, so he starts from the live `/swarm` event if it names the step, else from the seat's usual kind
+  of work (marked "probably"), and switches when the posted task shows otherwise. Without the relay he starts
+  cooking.
 - Console helpers: `__house()`, `__live`.
 - Fonts come from Google Fonts here; a swarm-hosted build must bundle them (the host allows same-origin scripts only).
