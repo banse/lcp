@@ -15,7 +15,7 @@ aidude `ideas/seat-house-life-sim.md`.
 A browser wallet only injects into http pages, so serve it rather than opening the file:
 
     python3 -I serve.py . 8795             # from this folder; caching off
-    open http://127.0.0.1:8795/#demo       # every event in about three minutes
+    open http://127.0.0.1:8795/#demo       # every event in about six minutes
     open http://127.0.0.1:8795/#/seat/558  # a live seat; no hash opens a random busy seat
 
 ## How it works
@@ -30,7 +30,7 @@ A browser wallet only injects into http pages, so serve it rather than opening t
   feeds · `src/wallet.js` · `src/sound.js` · `src/main.js` loop, routing, diary, daily letter, counters.
 - Worker updates: the newest worker release comes from GitHub (`Identity-md/worker` releases, CORS *, cached
   30 min). The seat's own version and online state come from `api.imd.fun/seats/<n>`, which sends no CORS header,
-  so `serve.py` relays four fields of it at `/proxy/seats/<n>` (local only). A seat "needs an update" when it is
+  so `serve.py` relays four fields and the 20 newest tasks of it at `/proxy/seats/<n>` (local only). A seat "needs an update" when it is
   not on the newest release and that release is 6 h old or the seat is 3 releases behind: the mail carrier
   brings a parcel, the idle computer blinks a download badge. When the version changes he fetches the parcel and
   installs it with a progress bar. Without the relay (a hosted copy today) the worker line says it can't read
@@ -44,9 +44,17 @@ A browser wallet only injects into http pages, so serve it rather than opening t
   oracle step = telescope; research = reads a book at the shelf; video = watches TV; audio/music = piano;
   websites (`build_website`, `frontend_for_contract`, `design_critic`, site) = cooking; token launch work
   (task `launch` is `custom_token`, `univ4_hook` or `evm_project`) = the computer; everything else (other launch
-  kinds such as `evm_contracts`, images, plain jobs) = cooking. The running task is not in the seat record until
+  kinds such as `evm_contracts`, plain jobs) = cooking; images (`create_image`) = he paints at the easel in the study
+  (owner, 2026-10-24). The running task is not in the seat record until
   it is posted, so he starts from the live `/swarm` event if it names the step, else from the seat's usual kind
   of work (marked "probably"), and switches when the posted task shows otherwise. Without the relay he starts
   cooking.
-- Console helpers: `__house()`, `__live`.
+- While he sleeps or is out, verdicts still arrive: the mail carrier comes, the mailbox flag goes up and an
+  accepted result counts on the plaque at once; he reads the letter (and hangs the picture, without counting it
+  again) when he is back. The daily letter becomes a note he left before bed or before going out, shown at once.
+- The owner paused the seat (`pausedByOwnerAt` set in the seat record, so only with the relay): he hangs a BACK
+  SOON sign on the front door and goes out; lights and fire go out and the dog waits by the door until he comes
+  home. The field was null on every seat sampled, so the scene is built from the field's name, not from a seen
+  pause.
+- Console helpers: `__house()`, `__live` (`__live.onEvent({type: 'pause'})` plays an event through the page).
 - Fonts come from Google Fonts here; a swarm-hosted build must bundle them (the host allows same-origin scripts only).
