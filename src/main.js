@@ -83,7 +83,7 @@ function startDemo() {
   house.onLetterDone = showLetter;
   clearDiary(); hideLetter();
   setTitle('Demo: a made-up seat, one fast day', null);
-  $('lede').textContent = 'Every event the house knows, in about three minutes: the phone, work, a posted result, good and bad mail, an oracle panel, a failed run, the checker going down, sleep.';
+  $('lede').textContent = 'Every event the house knows, in about four minutes: the phone, work, a posted result, good and bad mail, an oracle panel, a failed run, a worker update, the checker going down, sleep.';
   $('demo-btn').setAttribute('aria-pressed', 'true');
   if (location.hash !== '#demo') history.replaceState(null, '', '#demo');
   demo.start();
@@ -123,6 +123,8 @@ const SAY = {
   verifier: (e) => e.down ? 'The TV shows static: the swarm\'s checker is down.' : 'The TV works again: the checker is back.',
   sleep: () => 'Lights out. The seat left the network or has had no task for three days.',
   wake: () => 'He\'s up again: the seat is back.',
+  update: (e) => `A parcel arrived: a newer worker is out (${e.info.latest}${e.info.behind != null ? ', ' + e.info.behind + ' releases ahead of his' : ''}). It waits at the door until the seat updates.`,
+  updated: (e) => `The seat updated its worker to ${e.to}. He unpacks the parcel and installs it.`,
 };
 
 function onEvent(e) {
@@ -130,6 +132,7 @@ function onEvent(e) {
   if (e.type === 'init') {
     const st = e.asleep ? 'He\'s asleep: the seat left the network or has had no task for three days.' : e.working ? 'He\'s at his computer, working.' : 'He\'s at home, between tasks.';
     addDiary(mode === 'demo' ? 'The demo starts. ' + st : `You're visiting seat #${e.seat}. ${st}`);
+    if (e.update && e.update.needs) addDiary(`A parcel waits at his door: the seat runs ${e.update.current}, and the newest worker is ${e.update.latest}.`);
     if (mode === 'live') e.letter = prepareLetter(e.seat, e.data, e.asleep);
     else { pendingLetter = demoLetter(); e.letter = true; }
   } else if (SAY[e.type]) addDiary(SAY[e.type](e));
@@ -152,6 +155,18 @@ function onStatus(s) {
   if (s.verifierDown) bits.push('The swarm\'s checker is down.');
   bits.push((s.live ? 'Read ' : 'Demo data, ') + s.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.');
   $('st-line').textContent = bits.join(' ');
+  $('st-worker').textContent = workerLine(s);
+}
+
+function workerLine(s) {
+  if (s.seat === 'demo') return 'Worker: demo data.';
+  if (!s.detailRead) return 'Worker version: this page can\'t read the seat record from here (no relay, no CORS).';
+  const u = s.update, v = s.version || 'unknown';
+  if (!u) return `Worker ${v}. The newest release could not be read.`;
+  const age = u.latestAgeH < 1 ? 'under an hour' : Math.round(u.latestAgeH) + ' h';
+  if (!u.needs && u.behind === 0) return `Worker ${v}, the newest release (out ${age}).`;
+  if (!u.needs) return `Worker ${v}. A newer one (${u.latest}) came out ${age} ago; seats that update themselves catch up between tasks.`;
+  return `Worker ${v}: needs an update. ${u.behind != null ? u.behind + ' releases' : 'More than 40 releases'} behind the newest (${u.latest}, out ${age}).`;
 }
 
 function ago(ms) {

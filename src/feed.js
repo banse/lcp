@@ -18,11 +18,56 @@ function roleFor(events, id) {
   return mine[0].role || mine[0].step || '';
 }
 
+// ---------- worker releases (GitHub, CORS *) and the seat's version ----------
+const RELEASES = 'https://api.github.com/repos/Identity-md/worker/releases?per_page=40';
+const RELEASES_MS = 30 * 60000, GRACE_H = 6, BEHIND_MAX = 3;
+
+export async function workerReleases() {
+  const key = 'seathouse:releases';
+  try { const c = JSON.parse(localStorage.getItem(key) || 'null'); if (c && Date.now() - c.at < RELEASES_MS) return c.list; } catch (e) { /* no storage */ }
+  const r = await fetch(RELEASES, { cache: 'no-store' });
+  if (!r.ok) throw new Error('GitHub answered ' + r.status);
+  const list = (await r.json()).map((x) => {
+    const m = /^worker-v([\d.]+)-([0-9a-f]+)$/.exec(x.tag_name || '');
+    return m && { version: m[1], sha: m[2], at: Date.parse(x.published_at) };
+  }).filter(Boolean).sort((a, b) => b.at - a.at);
+  try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), list })); } catch (e) { /* no storage */ }
+  return list;
+}
+
+// Needs an update: not on the newest release, and the newest has been out GRACE_H hours or the seat is
+// BEHIND_MAX releases behind (seats with --auto-update catch up between tasks; releases ship every few hours).
+export function updateStatus(daemonVersion, releases, now = Date.now()) {
+  if (!daemonVersion || !releases || !releases.length) return null;
+  const sha = (daemonVersion.split('+')[1] || '').toLowerCase();
+  const latest = releases[0];
+  const idx = sha ? releases.findIndex((r) => r.sha.startsWith(sha) || sha.startsWith(r.sha)) : -1;
+  const behind = idx === -1 ? null : idx;
+  const latestAgeH = (now - latest.at) / 3600000;
+  const needs = idx !== 0 && (behind == null || behind >= BEHIND_MAX || latestAgeH >= GRACE_H);
+  return { current: daemonVersion, latest: latest.version + '+' + latest.sha.slice(0, 8), behind, latestAgeH, needs };
+}
+
+async function seatDetail(id) {
+  for (const url of ['/proxy/seats/' + id, API + '/seats/' + id]) {
+    try {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (r.ok) { const d = await r.json(); return d.seat || d; }
+    } catch (e) { /* not readable from here */ }
+  }
+  return null;
+}
+
+function prevChanged(a, b) {
+  return !a || ['attempts', 'accepted', 'rejected', 'failed', 'working'].some((k) => a[k] !== b[k]);
+}
+
 export class LiveFeed {
   constructor(onEvent, onStatus) {
     this.onEvent = onEvent; this.onStatus = onStatus;
     this.seat = null; this.prev = null; this.swarm = null; this.timer = null; this.oracleTimer = null;
     this.seenOracle = null; this.fails = 0; this.leftAt = null;
+    this.detail = null; this.update = null; this.detailTimer = null; this.lastDetailAt = 0;
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && this.seat != null) this.poll(); });
   }
 
@@ -34,13 +79,36 @@ export class LiveFeed {
   }
 
   setSeat(id) {
-    this.seat = id; this.prev = null; this.seenOracle = null; this.leftAt = null;
-    clearTimeout(this.timer); clearTimeout(this.oracleTimer);
-    this.poll();
+    this.seat = id; this.prev = null; this.seenOracle = null; this.leftAt = null; this.detail = null; this.update = null;
+    clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer);
+    const first = this.checkDetail(true);
+    Promise.race([first, new Promise((r) => setTimeout(r, 3000))]).then(() => { if (this.seat === id) this.poll(); });
     this.oracleTimer = setTimeout(() => this.checkOracle(), 4000);
   }
 
-  stop() { this.seat = null; clearTimeout(this.timer); clearTimeout(this.oracleTimer); }
+  stop() { this.seat = null; clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer); }
+
+  // the seat record (online, worker version) through the local relay, and the newest worker release
+  async checkDetail(first = false) {
+    clearTimeout(this.detailTimer);
+    const id = this.seat;
+    if (id == null) return;
+    this.lastDetailAt = Date.now();
+    const det = await seatDetail(id);
+    if (id !== this.seat) return;
+    let rel = null;
+    try { rel = await workerReleases(); } catch (e) { /* GitHub unreachable or rate limited */ }
+    if (id !== this.seat) return;
+    const before = this.detail, upd = det ? updateStatus(det.daemonVersion, rel) : null;
+    this.detail = det; this.releases = rel;
+    if (!first && before && det && before.daemonVersion && det.daemonVersion && before.daemonVersion !== det.daemonVersion) {
+      this.onEvent({ type: 'updated', from: before.daemonVersion, to: det.daemonVersion, info: upd });
+    } else if (upd && upd.needs && !(this.update && this.update.needs) && this.prev) {
+      this.onEvent({ type: 'update', info: upd });
+    }
+    this.update = upd;
+    this.detailTimer = setTimeout(() => this.checkDetail(), 10 * 60000);
+  }
 
   async poll() {
     clearTimeout(this.timer);
@@ -60,14 +128,18 @@ export class LiveFeed {
           if (e.state === 'joined' && this.leftAt && Date.parse(e.at) > this.leftAt) this.leftAt = null;
         }
       }
-      const asleep = isAsleep(cur, now) || (this.leftAt != null && !(cur && cur.working));
+      const online = this.detail && typeof this.detail.online === 'boolean' ? this.detail.online : null;
+      const asleep = online != null ? !online && !(cur && cur.working)
+        : isAsleep(cur, now) || (this.leftAt != null && !(cur && cur.working));
       const verifierDown = sw.health && sw.health.verifierUp === false;
       const idleHours = cur && cur.last && !cur.working ? (now - Date.parse(cur.last)) / 3600000 : 0;
-      const status = { seat: id, data: cur, asleep, verifierDown, idleHours, at: new Date(), live: true, health: sw.health };
+      const status = { seat: id, data: cur, asleep, verifierDown, idleHours, at: new Date(), live: true, health: sw.health,
+        online, version: this.detail ? this.detail.daemonVersion : null, update: this.update, detailRead: !!this.detail };
       if (!this.prev) {
         this.onEvent({ type: 'init', seat: id, data: cur, asleep, working: !!(cur && cur.working),
-          accepted: cur ? cur.accepted : 0, verifierDown });
+          accepted: cur ? cur.accepted : 0, verifierDown, update: this.update });
       } else {
+        if (Date.now() - this.lastDetailAt > 2 * 60000 && cur && prevChanged(this.prev.data, cur)) this.checkDetail();
         this.diff(this.prev, cur, asleep, verifierDown, sw.events);
       }
       this.prev = { data: cur, asleep, verifierDown };
@@ -142,11 +214,13 @@ export class DemoFeed {
       [80, () => { this.onEvent({ type: 'oracle' }); status(); }],
       [104, () => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }],
       [118, () => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }],
-      [146, () => { this.onEvent({ type: 'verifier', down: true }); status(false, true); }],
-      [160, () => { this.onEvent({ type: 'verifier', down: false }); status(); }],
-      [166, () => { this.onEvent({ type: 'sleep' }); status(true); }],
-      [184, () => { this.onEvent({ type: 'wake' }); status(); }],
-      [196, () => this.start()],
+      [140, () => { this.onEvent({ type: 'update', info: { current: '0.1.4+011c9f4c', latest: '0.1.4+1103e27b', behind: 3, latestAgeH: 7, needs: true } }); status(); }],
+      [168, () => { this.onEvent({ type: 'updated', from: '0.1.4+011c9f4c', to: '0.1.4+1103e27b', info: { needs: false } }); status(); }],
+      [196, () => { this.onEvent({ type: 'verifier', down: true }); status(false, true); }],
+      [208, () => { this.onEvent({ type: 'verifier', down: false }); status(); }],
+      [214, () => { this.onEvent({ type: 'sleep' }); status(true); }],
+      [232, () => { this.onEvent({ type: 'wake' }); status(); }],
+      [244, () => this.start()],
     ];
     for (const [s, fn] of plan) this.timers.push(setTimeout(fn, s * 1000));
   }

@@ -69,6 +69,7 @@ export function drawPerson(g, p, t, L) {
       R2(k === 0 ? -2 : k === 2 ? 2 : 0, -18, 2, 7, L.shirt); R2(k === 0 ? -2 : k === 2 ? 2 : 0, -11, 2, 2, L.skin);
       if (p.carry === 'letter') { R2(4, -15, 6, 4, P.white); R2(4, -15, 6, 1, P.red); }
       if (p.carry === 'frame') { R2(4, -16, 6, 6, P.yellow); R2(5, -15, 4, 4, P.green); }
+      if (p.carry === 'parcel') { R2(3, -17, 9, 8, P.wood); R2(3, -17, 9, 2, P.woodL); R2(7, -17, 1, 8, P.yellow); }
       break;
     }
     case 'sit': case 'type': case 'review': case 'piano': case 'tvsit': case 'sad': case 'nap': {
@@ -151,7 +152,7 @@ export function drawDog(g, d, t, color) {
 
 export function drawCarrier(g, c, t) {
   const L = { skin: '#e0ac84', hair: '#2b1d16', shirt: '#2f4a8a', pants: '#26407a', shoes: P.ink };
-  drawPerson(g, { ...c, pose: c.pose || 'walk' }, t, L);
+  drawPerson(g, { ...c, pose: c.pose === 'stand' ? 'stand' : 'walk' }, t, L);
   const R = painter(g, Math.round(c.x), Math.round(c.y), c.face);
   R(-4, -31, 9, 3, '#26407a'); R(3, -29, 4, 1, '#26407a');          // cap
   R(-7, -16, 4, 7, P.wood); R(-6, -18, 2, 2, P.woodD);              // bag

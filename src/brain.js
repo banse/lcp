@@ -12,7 +12,8 @@ export class House {
     this.dog = { x: 150, floor: 0, y: FLOOR_Y[0], face: 1, pose: 'sit', step: 0, target: null, wait: 0 };
     this.carrier = null;
     this.state = { action: null, asleep: false, working: false, smoke: false, phoneRinging: false, mailWaiting: false,
-      outgoing: 0, tvStatic: false, frames: 0, pendingFrames: 0, doorOpen: false };
+      outgoing: 0, tvStatic: false, frames: 0, pendingFrames: 0, doorOpen: false, parcel: false, needsUpdate: false,
+      installProgress: 0 };
     this.queue = [];
     this.current = null;
     this.cooldown = {};
@@ -35,6 +36,7 @@ export class House {
     switch (e.type) {
       case 'init':
         s.asleep = e.asleep; s.working = e.working; s.frames = e.accepted; s.tvStatic = e.verifierDown;
+        s.needsUpdate = !!(e.update && e.update.needs); s.parcel = s.needsUpdate;
         this.queue = []; this.current = null;
         this.place(e.asleep ? 'bed' : e.working ? 'desk' : 'livingMid');
         if (e.asleep) this.man.pose = 'sleep';
@@ -49,6 +51,8 @@ export class House {
       case 'phone': s.phoneRinging = true; this.push(6, 'phone', () => this.answer()); break;
       case 'oracle': this.push(4, 'oracle', () => this.telescope()); break;
       case 'verifier': s.tvStatic = e.down; break;
+      case 'update': s.needsUpdate = true; if (!s.parcel && !this.carrier) this.carrier = this.newCarrier('parcel'); break;
+      case 'updated': this.push(5, 'install', () => this.install()); break;
       case 'sleep':
         s.asleep = true; s.smoke = false; s.phoneRinging = false;
         s.frames += s.pendingFrames; s.pendingFrames = 0;
@@ -188,7 +192,7 @@ export class House {
 
   *mail(good, n) {
     const s = this.state, m = this.man;
-    if (!s.mailWaiting && !this.carrier) this.carrier = { x: -16, y: OUT_Y, face: 1, step: 0, phase: 'in', wait: 0 };
+    if (!s.mailWaiting && !this.carrier) this.carrier = this.newCarrier('letter');
     while (!s.mailWaiting) yield;
     yield* this.goTo('mailbox');
     s.mailWaiting = false; m.carry = 'letter';
@@ -210,6 +214,26 @@ export class House {
       yield* this.act('sad', 'sad', 8 + Math.random() * 8, 'dots');
       m.seat = 10;
     }
+  }
+
+  newCarrier(kind) { return { x: -16, y: OUT_Y, face: 1, step: 0, phase: 'in', wait: 0, kind, carry: kind }; }
+
+  // the seat's worker changed version: fetch the parcel from the doorstep and install it at the computer
+  *install() {
+    const s = this.state, m = this.man;
+    if (!s.parcel) {
+      if (!this.carrier) this.carrier = this.newCarrier('parcel');
+      for (let i = 0; i < sec(20) && !s.parcel; i++) yield;
+    }
+    yield* this.goTo('parcel');
+    s.parcel = false; m.carry = 'parcel';
+    yield* this.goTo('desk');
+    m.carry = null; m.seat = 10;
+    for (let i = 0; i <= sec(8); i++) { s.action = 'install'; m.pose = 'type'; s.installProgress = i / sec(8); if (i % 6 === 0) this.sound.tick(); yield; }
+    s.needsUpdate = false; s.installProgress = 0; s.action = null;
+    this.sound.jingle();
+    m.pose = 'stand';
+    yield* this.act('installed', 'stretch', 2, 'star');
   }
 
   *fan() {
@@ -250,7 +274,8 @@ export class House {
   // ---------- his own routine ----------
   routine() {
     const now = Date.now();
-    const w = { ...this.weights, nap: (this.idleHours || 0) > 12 ? 3 : this.weights.nap };   // long lulls: more naps
+    const w = { ...this.weights, nap: (this.idleHours || 0) > 12 ? 3 : this.weights.nap,   // long lulls: more naps
+      parcel: this.state.parcel ? 1.5 : 0 };                                              // an update waits at the door
     let opts = Object.entries(w).filter(([k]) => !(this.cooldown[k] > now));
     if (!opts.length) { this.cooldown = {}; opts = Object.entries(w); }
     let total = opts.reduce((a, [, w]) => a + w, 0), r = Math.random() * total, pick = opts[0][0];
@@ -285,6 +310,7 @@ export class House {
       *fire() { yield* this.goTo('fire'); yield* this.act('fire', 'stoke', 4); yield* this.goTo('armchair'); this.man.seat = 12; yield* this.act('rest', 'tvsit', 8); this.man.seat = 10; },
       *window() { const w = Math.random() < 0.5 ? 'kitchenWin' : 'bedWin'; yield* this.goTo(w); yield* this.act('window', 'stand', 6, Math.random() < 0.5 ? 'ask' : 'heart'); },
       *nap() { yield* this.goTo('armchair'); this.man.seat = 12; yield* this.act('nap', 'nap', 25 + Math.random() * 20, 'z'); this.man.seat = 10; },
+      *parcel() { yield* this.goTo('parcel'); yield* this.act('parcel', 'stand', 3, 'ask'); yield* this.goTo('livingMid'); },
       *mailcheck() { yield* this.goTo('mailbox'); yield* this.act('mailcheck', 'stand', 2, 'ask'); yield* this.goTo('livingMid'); },
     };
   }
@@ -312,8 +338,14 @@ export class House {
     const c = this.carrier;
     if (!c) return;
     c.step++;
-    if (c.phase === 'in') { c.face = 1; c.x += 0.9; c.pose = 'walk'; if (c.x >= 8) { c.phase = 'drop'; c.wait = sec(1); c.pose = 'carry'; } }
-    else if (c.phase === 'drop') { if (--c.wait <= 0) { this.state.mailWaiting = true; this.state.outgoing = 0; this.sound.clunk(); c.phase = 'out'; } }
+    const stop = c.kind === 'parcel' ? 36 : 8;
+    if (c.phase === 'in') { c.face = 1; c.x += 0.9; c.pose = 'walk'; if (c.x >= stop) { c.phase = 'drop'; c.wait = sec(1); c.pose = 'stand'; } }
+    else if (c.phase === 'drop') {
+      if (--c.wait <= 0) {
+        if (c.kind === 'parcel') this.state.parcel = true; else { this.state.mailWaiting = true; this.state.outgoing = 0; }
+        c.carry = null; this.sound.clunk(); c.phase = 'out';
+      }
+    }
     else { c.face = -1; c.x -= 0.9; c.pose = 'walk'; if (c.x < -20) this.carrier = null; }
   }
 }

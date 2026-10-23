@@ -35,6 +35,7 @@ export const SPOTS = {
   bathSink: { floor: 2, x: 292, face: 1 },
   bedWin: { floor: 2, x: 148, face: 1 },
   mailbox: { floor: 'out', x: 40, face: -1 },
+  parcel: { floor: 'out', x: 50, face: -1 },
 };
 
 export const P = {
@@ -353,10 +354,15 @@ export function drawProps(g, s, t) {
       const k = (t + i * 11) % 40;
       rect(g, i % 2 ? P.grey : P.greyD, 128 + ((i * 5 + (k >> 2)) % 12), 166 - k, 4 - (k > 24 ? 1 : 0), 3);
     }
+  } else if (a === 'install') {
+    rect(g, P.screen, 122, 170, 22, 14);
+    rect(g, P.white, 125, 176, 16, 3); rect(g, P.green, 125, 176, Math.round(16 * (s.installProgress || 0)), 3);
   } else if (['type', 'review', 'letter'].includes(a)) {
     rect(g, P.screen, 122, 170, 22, 14);
     const n = 1 + ((t >> 3) % 5);
     for (let i = 0; i < n; i++) rect(g, P.screenL, 124, 172 + i * 2, 4 + ((i * 7) % 14), 1);
+  } else if (s.needsUpdate && (t >> 4) % 2) {                 // blinking update badge on the idle screen
+    rect(g, P.yellow, 129, 172, 8, 10); rect(g, P.ink, 132, 173, 2, 5); rect(g, P.ink, 130, 177, 6, 1); rect(g, P.ink, 131, 178, 4, 1); rect(g, P.ink, 132, 179, 2, 1);
   }
   if (a === 'review') { rect(g, P.yellow, 146, 174, 10, 4); rect(g, shade(P.yellow, 0.5), 140, 178, 20, 10); }
   else rect(g, P.greyD, 146, 174, 10, 4);
@@ -393,6 +399,11 @@ export function drawProps(g, s, t) {
   // mailbox
   rect(g, P.blue, 14, 264, 20, 11); rect(g, P.blueD, 14, 274, 20, 2); rect(g, P.white, 18, 268, 12, 1);
   if (s.mailWaiting || s.outgoing) rect(g, P.red, 34, 258, 2, 10); else rect(g, P.red, 34, 266, 8, 2);
+  // a parcel with the new worker on the doorstep
+  if (s.parcel) {
+    rect(g, P.wood, 40, 288, 12, 10); rect(g, P.woodL, 40, 288, 12, 2); rect(g, P.yellow, 45, 288, 2, 10);
+    rect(g, P.white, 42, 292, 3, 3); rect(g, P.ink, 43, 293, 1, 1);
+  }
   // front door
   if (s.doorOpen) { rect(g, P.black, 56, 252, 4, 38); rect(g, P.wood, 46, 252, 10, 38); }
   else { rect(g, P.wood, 55, 252, 6, 38); rect(g, P.yellow, 59, 271, 2, 2); }
