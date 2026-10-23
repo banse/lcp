@@ -17,6 +17,7 @@ export class Sound {
   note() { const s = [392, 440, 523, 587, 659, 784]; this.beep(s[Math.floor(Math.random() * s.length)], 0.25, 0, 'triangle', 0.06); }
   ring() { for (let i = 0; i < 6; i++) this.beep(i % 2 ? 1100 : 1300, 0.06, i * 0.07, 'square', 0.03); }
   clunk() { this.beep(160, 0.12, 0, 'square', 0.06); }
+  knock() { this.beep(95, 0.07, 0, 'triangle', 0.18); this.beep(80, 0.07, 0.11, 'triangle', 0.18); }
   jingle() { [523, 659, 784, 1047].forEach((f, i) => this.beep(f, 0.14, i * 0.12, 'square', 0.04)); }
   sad() { [392, 349, 311].forEach((f, i) => this.beep(f, 0.3, i * 0.25, 'triangle', 0.05)); }
 }

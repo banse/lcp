@@ -179,3 +179,62 @@ export function drawBubble(g, x, y, icon, t) {
   rect(g, P.white, bx + 2, by + h, 2, 2); rect(g, P.ink, bx + 2, by + h + 2, 1, 1);
   bits.forEach((row, j) => [...row].forEach((b, i) => { if (b === '1') rect(g, icon === 'heart' ? P.red : P.ink, bx + 2 + i, by + 2 + j, 1, 1); }));
 }
+
+// Close-up at the glass: his face rises from the bottom of the screen and his fist knocks on it.
+function blob(g, col, x, y, w, h, r) {            // rounded rectangle in whole pixels
+  for (let j = 0; j < h; j++) {
+    const dy = j < r ? r - j : j >= h - r ? j - (h - r - 1) : 0;
+    const inset = dy ? Math.round(r - Math.sqrt(Math.max(0, r * r - dy * dy))) : 0;
+    rect(g, col, x + inset, y + j, w - 2 * inset, 1);
+  }
+}
+function outlined(g, col, x, y, w, h, r) { blob(g, P.ink, x - 2, y - 2, w + 4, h + 4, r + 2); blob(g, col, x, y, w, h, r); }
+
+export function drawCloseup(g, c, L, t) {
+  const k = c.k == null ? 1 : c.k, ease = 1 - (1 - k) * (1 - k);
+  const cx = 240, top = Math.round(330 - ease * 175);            // head top when fully up: y 155
+  g.fillStyle = 'rgba(16,18,40,0.5)';                             // the house dims behind him
+  g.fillRect(0, 0, 480, 320);
+  const skinD = shade(L.skin, -0.18), hairD = shade(L.hair, -0.25);
+  outlined(g, L.shirt, cx - 62, top + 72, 124, 120, 22);         // shoulders
+  rect(g, shade(L.shirt, -0.2), cx - 62, top + 110, 124, 2);
+  blob(g, L.skin, cx - 10, top + 70, 20, 14, 6);                  // collar opening
+  rect(g, L.skin, cx - 9, top + 58, 18, 16);                       // neck
+  rect(g, skinD, cx - 9, top + 58, 18, 3);
+  outlined(g, L.skin, cx - 36, top + 24, 10, 18, 4); outlined(g, L.skin, cx + 26, top + 24, 10, 18, 4);   // ears
+  outlined(g, L.skin, cx - 30, top, 60, 64, 16);                  // face
+  blob(g, L.hair, cx - 33, top - 6, 66, 22, 12);                   // hair and fringe
+  for (let x = cx - 28; x < cx + 26; x += 9) blob(g, L.hair, x, top + 12, 8, 7, 3);
+  rect(g, L.hair, cx - 33, top + 6, 8, 26); rect(g, L.hair, cx + 25, top + 6, 8, 26);
+  rect(g, hairD, cx - 20, top - 4, 30, 2);
+  const urgent = c.phase === 'knock', blink = (t >> 2) % 40 === 0 && !urgent;
+  for (const ex of [cx - 19, cx + 7]) {                            // eyes
+    rect(g, L.hair, ex - 1, top + (urgent ? 22 : 24), 14, 3);       // brows go up while he knocks
+    if (blink) { rect(g, P.ink, ex, top + 33, 12, 2); continue; }
+    blob(g, P.white, ex, top + 28, 12, 11, 4);
+    rect(g, P.ink, ex + 4, top + 31, 6, 7); rect(g, P.white, ex + 5, top + 32, 2, 2);
+  }
+  rect(g, skinD, cx - 3, top + 38, 6, 9); rect(g, shade(L.skin, -0.3), cx - 3, top + 46, 6, 1);   // nose
+  rect(g, P.pink, cx - 24, top + 46, 7, 3); rect(g, P.pink, cx + 17, top + 46, 7, 3);             // cheeks
+  if (urgent) { blob(g, P.ink, cx - 6, top + 50, 12, 9, 4); blob(g, P.redD, cx - 4, top + 52, 8, 6, 3); }
+  else if (c.ack) { rect(g, P.ink, cx - 9, top + 52, 18, 2); rect(g, P.ink, cx - 11, top + 50, 2, 2); rect(g, P.ink, cx + 9, top + 50, 2, 2); }
+  else rect(g, P.ink, cx - 6, top + 53, 12, 2);
+  if (c.phase === 'knock' || c.phase === 'wait') {
+    const near = c.hit ? 4 : 0;                                    // the fist comes towards the glass
+    outlined(g, L.shirt, cx + 44, top + 6, 18, 90, 6);              // raised arm, sleeve
+    rect(g, L.skin, cx + 46, top + 2, 14, 8);                        // wrist
+    const fx = cx + 38 - near, fy = top - 22 - near, fw = 30 + 2 * near;
+    outlined(g, L.skin, fx, fy, fw, fw - 2, 8);
+    for (let i = 1; i < 4; i++) rect(g, skinD, fx + Math.round(i * fw / 4), fy + 3, 2, Math.round(fw / 3));   // knuckles
+    blob(g, skinD, fx - 2, fy + Math.round(fw / 2), 8, 10, 3);      // thumb
+    if (c.hit) {
+      const hx = fx + fw / 2, hy = fy + fw / 2;
+      for (const [dx, dy, l] of [[-26, -8, 10], [22, -14, 10], [-24, 16, 8], [24, 12, 8], [0, -28, 10]]) {
+        const sx = Math.sign(dx) || 0, sy = Math.sign(dy) || -1;
+        for (let i = 0; i < l; i += 2) rect(g, P.white, hx + dx + sx * i, hy + dy + sy * i * 0.5, 2, 2);
+      }
+    }
+  }
+  g.fillStyle = 'rgba(255,255,255,0.08)';                         // a glint on the glass
+  for (let i = 0; i < 36; i++) g.fillRect(96 + i * 2, 24 + i * 3, 26, 2);
+}

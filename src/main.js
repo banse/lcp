@@ -1,7 +1,7 @@
 // Wiring: render loop, seat choice (#/seat/N, #demo), wallet lookup, diary, daily letter and counters.
 import { W, H, drawHouse, drawSky, drawProps, drawLights, skyPhase } from './world.js';
 import { House } from './brain.js';
-import { drawPerson, drawDog, drawCarrier, drawBubble, lookFor } from './person.js';
+import { drawPerson, drawDog, drawCarrier, drawBubble, drawCloseup, lookFor } from './person.js';
 import { LiveFeed, DemoFeed, isAsleep } from './feed.js';
 import { wallets, connect, seatsOf } from './wallet.js';
 import { Sound } from './sound.js';
@@ -14,7 +14,9 @@ drawHouse(layer.getContext('2d'));
 
 const sound = new Sound();
 let house = null, look = null, feed = null, seatId = null, mode = null, tick = 0;
-let pendingLetter = null, wallet = null;
+let pendingLetter = null, wallet = null, lastUpdate = null;
+const ownedSeats = new Set();
+const KNOCK_AGAIN_MS = 30 * 60000, ACK_MS = 6 * 3600000;
 
 const live = new LiveFeed(onEvent, onStatus);
 const demo = new DemoFeed(onEvent, onStatus);
@@ -36,13 +38,16 @@ function draw() {
   const s = house.state, m = house.man;
   drawProps(g, s, tick);
   drawDog(g, house.dog, tick, look.dog);
-  drawPerson(g, m, tick, look);
+  if (!(s.closeup && s.closeup.k > 0.3)) drawPerson(g, m, tick, look);   // at the glass he is in the close-up
   drawLights(g, s, phase);
   if (house.carrier) drawCarrier(g, house.carrier, tick);
   if (m.icon) {
     const hx = m.pose === 'sleep' ? 76 : m.x, hy = m.pose === 'sleep' ? 98 : m.y - (['sit', 'type', 'review', 'piano', 'tvsit', 'sad'].includes(m.pose) ? 32 : 32);
     drawBubble(g, hx, hy, m.icon, tick);
   }
+  const c = s.closeup;
+  if (c) drawCloseup(g, c, look, tick);
+  canvas.style.transform = c && c.hit ? `translate(${tick % 2 ? 2 : -2}px, ${tick % 3 ? 1 : 0}px)` : '';
 }
 
 function fit() {
@@ -66,7 +71,8 @@ function visit(id) {
   mode = 'live'; seatId = id;
   house = new House(id, sound); look = lookFor(id);
   house.onLetterDone = showLetter;
-  feed = live;
+  house.onKnock = showKnock;
+  feed = live; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
   setTitle('Who lives in seat ', id);
   $('lede').textContent = 'A little person lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.';
@@ -81,6 +87,7 @@ function startDemo() {
   mode = 'demo'; seatId = 'demo';
   house = new House(4242, sound); look = lookFor(4242);
   house.onLetterDone = showLetter;
+  house.onKnock = showKnock; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
   setTitle('Demo: a made-up seat, one fast day', null);
   $('lede').textContent = 'Every event the house knows, in about four minutes: the phone, work, a posted result, good and bad mail, an oracle panel, a failed run, a worker update, the checker going down, sleep.';
@@ -137,7 +144,41 @@ function onEvent(e) {
     else { pendingLetter = demoLetter(); e.letter = true; }
   } else if (SAY[e.type]) addDiary(SAY[e.type](e));
   house.event(e);
+  if (e.type === 'init' && e.update) lastUpdate = e.update;
+  if (e.type === 'update') lastUpdate = e.info;
+  if (e.type === 'updated') { lastUpdate = e.info; hideKnock(); }
+  if ((e.type === 'init' && e.update && e.update.needs) || e.type === 'update' || e.type === 'wake') setTimeout(maybeKnock, e.type === 'update' ? 9000 : 4000);
 }
+
+// ---------- the knock: an outdated seat tells its owner ----------
+function ackKey() { return `seathouse:knock:${seatId}:${lastUpdate ? lastUpdate.latest : ''}`; }
+
+function maybeKnock() {
+  if (!house || !lastUpdate || !lastUpdate.needs || house.state.asleep || !house.state.needsUpdate) return;
+  if (mode !== 'demo' && !ownedSeats.has(seatId)) return;            // only the owner is knocked for
+  const acked = Number(store(ackKey()) || 0);
+  if (mode !== 'demo' && Date.now() - acked < ACK_MS) return;
+  house.event({ type: 'knock', info: lastUpdate });
+}
+setInterval(maybeKnock, KNOCK_AGAIN_MS);
+
+function showKnock(info) {
+  const own = mode === 'demo' ? 'Demo: ' : '';
+  $('knock-title').textContent = `${own}Knock knock: seat #${seatId === 'demo' ? '0000' : seatId} needs an update`;
+  const age = info.latestAgeH < 1 ? 'under an hour' : Math.round(info.latestAgeH) + ' h';
+  $('knock-text').textContent = `It runs worker ${info.current}. The newest is ${info.latest}, out ${age}` +
+    (info.behind != null ? ` and ${info.behind} release${info.behind === 1 ? '' : 's'} ahead of it.` : ', more than 40 releases ahead of it.');
+  $('knock').hidden = false;
+  addDiary('He knocked on the glass: the seat needs an update.');
+}
+function hideKnock() { $('knock').hidden = true; }
+
+$('knock-ok').addEventListener('click', () => {
+  if (house) house.ackKnock();
+  store(ackKey(), Date.now());
+  hideKnock();
+  addDiary('You told him you saw it. He won\'t knock again for six hours on this version.');
+});
 
 function onStatus(s) {
   if (s.error) { $('st-line').textContent = 'Can\'t reach the swarm (' + s.error + '). Retrying.'; return; }
@@ -243,6 +284,7 @@ async function connectWallet(w) {
     note.textContent = 'Looking up your seats…';
     const sw = live.swarm || await live.fetchSwarm();
     const res = await seatsOf(wallet, sw.owners || []);
+    ownedSeats.clear(); res.ids.forEach((id) => ownedSeats.add(id));
     const short = wallet.address.slice(0, 6) + '…' + wallet.address.slice(-4);
     const box = $('wallet-seats');
     box.innerHTML = '';
@@ -258,7 +300,8 @@ async function connectWallet(w) {
         b.addEventListener('click', () => visit(id));
         box.append(b);
       }
-      if (res.ids.length === 1) visit(res.ids[0]);
+      if (res.ids.length === 1 && res.ids[0] !== seatId) visit(res.ids[0]);
+      else setTimeout(maybeKnock, 1500);
     }
     $('wallet-btn').textContent = 'Wallet: ' + short;
     $('wallet-forget').hidden = false;
@@ -283,7 +326,7 @@ $('wallet-btn').addEventListener('click', () => {
 });
 
 $('wallet-forget').addEventListener('click', () => {
-  wallet = null;
+  wallet = null; ownedSeats.clear(); hideKnock();
   $('wallet-seats').innerHTML = ''; $('wallet-note').textContent = 'Forgotten. This page keeps no wallet data.';
   $('wallet-btn').textContent = 'Connect wallet'; $('wallet-forget').hidden = true;
 });

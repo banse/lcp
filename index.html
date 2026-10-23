@@ -19,6 +19,14 @@
     <canvas id="game" width="480" height="320" aria-label="The house of the chosen seat"></canvas>
   </div>
 
+  <section id="knock" class="knock" hidden role="alert">
+    <h2 id="knock-title">Knock knock</h2>
+    <p id="knock-text"></p>
+    <p>On the machine that runs this seat, run <code>imd update</code> and restart the worker. A worker started with
+      <code>--auto-update</code> updates itself between tasks.</p>
+    <button type="button" id="knock-ok">Got it</button>
+  </section>
+
   <section class="controls" aria-label="Choose a seat">
     <form id="seat-form" class="seat-form">
       <label for="seat-input">Seat</label>

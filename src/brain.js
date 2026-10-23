@@ -19,6 +19,8 @@ export class House {
     this.cooldown = {};
     this.seedRoutine(seed);
     this.onLetterDone = null;
+    this.onKnock = null;          // (info) => the page shows its message to the owner
+    this.knockAck = false;
   }
 
   seedRoutine(seed) {
@@ -52,7 +54,12 @@ export class House {
       case 'oracle': this.push(4, 'oracle', () => this.telescope()); break;
       case 'verifier': s.tvStatic = e.down; break;
       case 'update': s.needsUpdate = true; if (!s.parcel && !this.carrier) this.carrier = this.newCarrier('parcel'); break;
-      case 'updated': this.push(5, 'install', () => this.install()); break;
+      case 'updated': this.knockAck = true; this.push(5, 'install', () => this.install()); break;
+      case 'knock':
+        if (!s.asleep && !this.queue.some((q) => q.name === 'knock') && !(this.current && this.current.name === 'knock')) {
+          this.knockInfo = e.info; this.push(8, 'knock', () => this.knock());
+        }
+        break;
       case 'sleep':
         s.asleep = true; s.smoke = false; s.phoneRinging = false;
         s.frames += s.pendingFrames; s.pendingFrames = 0;
@@ -89,7 +96,7 @@ export class House {
   }
 
   start(item) {
-    this.man.icon = null; this.man.carry = null; this.state.action = null;
+    this.man.icon = null; this.man.carry = null; this.state.action = null; this.state.closeup = null;   // a cut-off knock leaves no overlay
     if (this.man.pose === 'sleep' && item.name !== 'sleep') this.place('bed', true);
     const m = this.man;
     if (m.pose !== 'sleep') m.y = m.floor === 'out' ? OUT_Y : FLOOR_Y[m.floor];   // an interrupted climb lands him on his floor
@@ -235,6 +242,36 @@ export class House {
     m.pose = 'stand';
     yield* this.act('installed', 'stretch', 2, 'star');
   }
+
+  // he comes up to the glass and knocks, so the owner looks up from whatever they were doing
+  *knock() {
+    const s = this.state, m = this.man;
+    yield* this.goTo('livingMid');
+    m.face = 1; m.pose = 'stand';
+    this.knockAck = false;
+    s.closeup = { phase: 'up', k: 0, knocks: 0 };
+    for (let i = 0; i <= sec(1); i++) { s.closeup.k = i / sec(1); yield; }
+    s.closeup.phase = 'knock';
+    if (this.onKnock) this.onKnock(this.knockInfo);
+    for (let round = 0; round < 2; round++) {
+      for (let i = 0; i < sec(1.6); i++) {
+        s.closeup.hit = (i % 12) < 3 && i < sec(1.1);
+        if (i % 12 === 0 && i < sec(1.1)) { this.sound.knock(); s.closeup.knocks++; }
+        yield;
+      }
+      s.closeup.hit = false;
+      for (let i = 0; i < sec(1.2) && !this.knockAck; i++) yield;
+      if (this.knockAck) break;
+    }
+    s.closeup.phase = 'wait'; s.closeup.ack = this.knockAck;
+    for (let i = 0; i < sec(20) && !this.knockAck; i++) yield;
+    s.closeup.phase = 'down'; s.closeup.ack = this.knockAck;
+    for (let i = sec(1); i >= 0; i--) { s.closeup.k = i / sec(1); yield; }
+    s.closeup = null;
+    yield* this.act('nod', 'stand', 1.5, this.knockAck ? 'heart' : 'dots');
+  }
+
+  ackKnock() { this.knockAck = true; }
 
   *fan() {
     yield* this.goTo('deskStand');

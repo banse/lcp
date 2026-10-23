@@ -35,5 +35,10 @@ A browser wallet only injects into http pages, so serve it rather than opening t
   brings a parcel, the idle computer blinks a download badge. When the version changes he fetches the parcel and
   installs it with a progress bar. Without the relay (a hosted copy today) the worker line says it can't read
   the seat record, and sleep falls back to the 72 h rule.
+- Knocking on the glass: when the connected wallet owns the seat on screen and that seat needs an update (and is
+  awake), he walks to the living room, his face comes up close behind the glass and he knocks (screen shake, two
+  thuds with sound on). A banner names the seat's worker, the newest one and how to update (`imd update` and a
+  restart, or `--auto-update`). "Got it" stops it for 6 h on that version; otherwise he knocks again every 30 min.
+  Visitors who don't own the seat see only the parcel. The demo knocks so the scene can be seen.
 - Console helpers: `__house()`, `__live`.
 - Fonts come from Google Fonts here; a swarm-hosted build must bundle them (the host allows same-origin scripts only).

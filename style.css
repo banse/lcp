@@ -87,3 +87,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--lamp); outl
 .foot p { margin: 0; max-width: 80ch; }
 code { font-family: var(--type); font-size: 0.95em; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+
+.knock { display: grid; gap: 8px; background: var(--paper); color: var(--paper-ink); padding: 14px 16px;
+  border: 3px solid var(--lamp); box-shadow: 4px 4px 0 var(--wood); }
+.knock h2 { margin: 0; }
+.knock p { margin: 0; max-width: 70ch; }
+.knock code { background: #ebe1c6; padding: 0 4px; }
+.knock button { justify-self: start; }
