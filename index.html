@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Seat house (local test)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Courier+Prime&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="page">
+  <header class="head">
+    <h1 id="title">Who lives in this seat?</h1>
+    <p id="lede">A little person lives the working day of one IMD swarm seat. Everything he does comes from the seat's public record.</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="game" width="480" height="320" aria-label="The house of the chosen seat"></canvas>
+  </div>
+
+  <section class="controls" aria-label="Choose a seat">
+    <form id="seat-form" class="seat-form">
+      <label for="seat-input">Seat</label>
+      <input id="seat-input" type="number" min="0" max="1999" inputmode="numeric" placeholder="0–1999">
+      <button type="submit">Visit</button>
+      <button type="button" id="random-btn" class="quiet">Random busy seat</button>
+    </form>
+    <div class="toggles">
+      <button type="button" id="wallet-btn">Connect wallet</button>
+      <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
+      <button type="button" id="sound-btn" class="quiet" aria-pressed="false">Sound off</button>
+    </div>
+  </section>
+
+  <section id="wallet-panel" class="wallet" hidden aria-live="polite">
+    <p id="wallet-note"></p>
+    <div id="wallet-choices" class="doors"></div>
+    <div id="wallet-seats" class="doors"></div>
+    <button type="button" id="wallet-forget" class="quiet" hidden>Forget wallet</button>
+  </section>
+
+  <section class="below">
+    <div class="diary">
+      <h2>Diary</h2>
+      <ol id="diary" aria-live="polite"><li class="empty">What he does will show up here.</li></ol>
+    </div>
+    <div class="side">
+      <div class="counters">
+        <h2 id="st-head">The seat</h2>
+        <dl>
+          <div><dt>Tasks</dt><dd id="st-attempts">–</dd></div>
+          <div><dt>Accepted</dt><dd id="st-accepted">–</dd></div>
+          <div><dt>Rejected</dt><dd id="st-rejected">–</dd></div>
+          <div><dt>Failed</dt><dd id="st-failed">–</dd></div>
+        </dl>
+        <p id="st-line" class="small">Waiting for the first reading.</p>
+      </div>
+      <article id="letter" class="letter" hidden>
+        <h2>A letter from him</h2>
+        <pre id="letter-text"></pre>
+      </article>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>Data: <code>api.imd.fun/swarm</code> and <code>/oracle/requests</code>, read every 30 seconds while this tab is open. The wallet is only asked for its address. Local test build; not affiliated with Activision or Identity.md.</p>
+  </footer>
+</main>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

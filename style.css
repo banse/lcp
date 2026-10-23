@@ -1,0 +1,89 @@
+/* Night garden around a lit dollhouse: the page is the dark yard, the canvas is the house. */
+:root {
+  --night: #1b2046;
+  --night-2: #252b5c;
+  --ink: #f3ead2;
+  --muted: #aeb2d8;
+  --lamp: #f2c84a;
+  --wood: #6a4022;
+  --wood-l: #c48a4e;
+  --paper: #f7f1df;
+  --paper-ink: #2a1d16;
+  --pixel: "Pixelify Sans", ui-rounded, "Trebuchet MS", system-ui, sans-serif;
+  --type: "Courier Prime", "Courier New", ui-monospace, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--night);
+  color: var(--ink);
+  font-family: var(--pixel);
+  font-size: 17px;
+  line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.page { max-width: 1000px; margin: 0 auto; display: grid; gap: 20px; }
+.head { display: grid; gap: 6px; }
+h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.6rem); font-weight: 600; line-height: 1.1; text-wrap: balance; }
+h1 .num { color: var(--lamp); }
+#lede { margin: 0; color: var(--muted); max-width: 62ch; }
+h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; }
+
+.page > * { min-width: 0; }
+.stage { display: flex; justify-content: center; min-width: 0; }
+#game {
+  display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 3 / 2;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  border: 4px solid var(--wood); box-shadow: 0 0 0 1px var(--wood-l);
+  background: #131a3e;
+}
+
+.controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; }
+.seat-form, .toggles { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+label { color: var(--muted); }
+input[type=number] {
+  width: 7.5rem; font: inherit; color: var(--paper-ink); background: var(--paper);
+  border: 2px solid var(--wood-l); padding: 6px 8px;
+}
+button {
+  font: inherit; font-weight: 600; color: var(--paper-ink); background: var(--lamp);
+  border: 2px solid var(--wood); padding: 6px 12px; cursor: pointer;
+}
+button.quiet { background: transparent; color: var(--ink); border-color: var(--wood-l); }
+button[aria-pressed=true] { background: var(--wood-l); color: var(--paper-ink); }
+button:hover { filter: brightness(1.08); }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--lamp); outline-offset: 2px; }
+
+.wallet { display: grid; gap: 10px; padding: 12px 14px; background: var(--night-2); border: 2px solid var(--wood); }
+.wallet p { margin: 0; }
+.doors { display: flex; flex-wrap: wrap; gap: 8px; }
+.doors:empty { display: none; }
+.door { background: var(--wood-l); color: var(--paper-ink); }
+.door small { display: block; font-weight: 400; font-size: 0.75rem; }
+
+.below { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 720px) { .below { grid-template-columns: 1fr; } }
+.diary ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 360px; overflow: auto; }
+.diary li { display: grid; grid-template-columns: 3.4rem 1fr; gap: 8px; }
+.diary li time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.diary li.empty { display: block; color: var(--muted); }
+.side { display: grid; gap: 20px; }
+.counters dl { margin: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.counters dl div { background: var(--night-2); padding: 8px 10px; border-left: 3px solid var(--wood-l); }
+.counters dt { color: var(--muted); font-size: 0.85rem; }
+.counters dd { margin: 0; font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.small { color: var(--muted); font-size: 0.9rem; margin: 10px 0 0; }
+@media (max-width: 420px) { .counters dl { grid-template-columns: repeat(2, 1fr); } }
+
+.letter { background: var(--paper); color: var(--paper-ink); padding: 16px 18px; border: 2px solid var(--wood-l); box-shadow: 4px 4px 0 var(--wood); }
+.letter h2 { font-family: var(--pixel); }
+.letter pre { margin: 0; font-family: var(--type); font-size: 0.98rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.foot { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--night-2); padding-top: 14px; }
+.foot p { margin: 0; max-width: 80ch; }
+code { font-family: var(--type); font-size: 0.95em; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
