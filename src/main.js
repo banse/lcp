@@ -469,7 +469,7 @@ $('wallet-forget').addEventListener('click', () => {
   $('wallet-btn').textContent = 'Connect wallet'; $('wallet-forget').hidden = true;
 });
 
-// ---------- the IMD Explorer beside the house: the local side-by-side page (aidude ideas evidence, port 8798) ----------
+// ---------- the IMD Explorer beside the house: the local side-by-side page (tools/side-by-side/, port 8798) ----------
 // On its own the house offers "Show on IMD Explorer" while that page answers: it opens with the seat's agent page on
 // the left and this house on the right (following the same job, if one is followed). Inside it, the page says so
 // ({type: 'lcp:split', on: true, activeJobs}) and the button hides the explorer again: the page goes back to this

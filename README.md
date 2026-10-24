@@ -49,6 +49,18 @@ A browser wallet only injects into http pages, so serve it rather than opening t
     open http://127.0.0.1:8795/#/seat/558  # a live seat; no hash opens a random busy seat
     open http://127.0.0.1:8795/#/job/<id>  # follow a job from seat to seat (needs the relay)
 
+The house beside explorer.imd.fun (`tools/side-by-side/`, local only): with the house's server running as above,
+
+    python3 -I tools/side-by-side/side_by_side.py      # port 8798
+    open http://127.0.0.1:8798/side-by-side            # ?seat=N or ?job=<id> to start there
+
+- explorer.imd.fun sends `frame-ancestors 'none'`, so `side_by_side.py` passes it through 127.0.0.1 (GET and HEAD only,
+  no cookies either way) without that directive, and hides its Launch, $IMD, Docs, Telegram, Connect and menu; its
+  light/dark switch stays and decides the look of both panes. `/side-by-side/jobs` lists the active jobs.
+- The page: the explorer left, the house right, a divider to drag (both stacked, house on top, below 760 px). Seat #
+  shows a seat in both; Job + Follow Job follow an active job; an agent or active job opened in the explorer, or a
+  step row of the followed job, moves the house too ("House follows the explorer").
+
 ## How it works
 
 - Data: `api.imd.fun/swarm` every 30 s while the tab is visible (CORS *): per-seat counters, `owners[2000]`,
@@ -136,8 +148,8 @@ A browser wallet only injects into http pages, so serve it rather than opening t
   and keep the usual four puffs); at his station his bubble shows the model's namesake (`MODEL_SYMBOL` in
   `src/themes/imd.js`: Opus a note, Sonnet a quill, Haiku a leaf, Fable a book, Astra a star, Sol the sun, Luna the
   moon), taking turns with the activity's own icon. The diary names the exact model once.
-- The IMD Explorer beside the house (2026-10-24): the seat row has a button for the local side-by-side page (aidude
-  ideas `evidence/seat-house-life-sim/side-by-side/`, `http://127.0.0.1:8798/side-by-side`). On its own the house
+- The IMD Explorer beside the house (2026-10-24): the seat row has a button for the local side-by-side page
+  (`tools/side-by-side/`, `http://127.0.0.1:8798/side-by-side`, see Run). On its own the house
   shows "Show on IMD Explorer" while that page answers (a `no-cors` probe every 60 s; a hosted copy never shows it, nor
   does the demo); it opens `?seat=N` (and `&job=<id>` while a job is followed): the seat's agent page on the left,
   this house on the right. Inside that page (it posts `{type: 'lcp:split', on: true}`) the button says "Hide explorer"

@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>IMD Explorer and Little Computer Pepes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="icon" href="data:,">
+<script>
+  // the explorer's mode, as it saves it (localStorage imd-theme, this origin through the pass-through; dark unless light)
+  try { document.documentElement.dataset.mode = localStorage.getItem('imd-theme') === 'light' ? 'light' : 'dark'; }
+  catch (e) { document.documentElement.dataset.mode = 'dark'; }
+</script>
+<style>
+  /* light and dark like the explorer's own modes; --site is both sites' page colour, which the divider takes */
+  :root { --paper: #ffffff; --ink: #111111; --muted: #6b6b6b; --rule: #111111; --screen: #38d050; --grip: #9a9a96;
+          --site: #ffffff; --site-rule: #e6e6e6; --site-ink: #111111; color-scheme: light; }
+  :root[data-mode="dark"] { --paper: #000000; --ink: #f4f4f2; --muted: #9a9a96; --rule: #2c2c2a; --grip: #5c5c58;
+          --site: #000000; --site-rule: #2c2c2a; --site-ink: #f4f4f2; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body { height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--paper); color: var(--ink);
+         font: 13px/1.4 'IBM Plex Mono', ui-monospace, Menlo, monospace; }
+
+  /* the bar: explorer name left, the controls, the house name right; on a small screen the names first, then the controls */
+  header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "explorer controls house";
+           align-items: center; gap: 6px 16px; border-bottom: 1px solid var(--rule);
+           padding: 6px max(12px, env(safe-area-inset-right, 0px)) 6px max(12px, env(safe-area-inset-left, 0px)); }
+  header .side { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+  header .ex-side { grid-area: explorer; }
+  header .house-side { grid-area: house; flex-direction: row-reverse; }
+  header b { font-weight: 600; white-space: nowrap; }
+  header a { color: var(--muted); white-space: nowrap; }
+  header a:hover, header a:focus-visible { color: var(--ink); }
+  .controls { grid-area: controls; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 24px; min-width: 0; }
+  form { display: flex; align-items: center; gap: 8px; margin: 0; white-space: nowrap; min-width: 0; }
+  input[type=number], select { font: inherit; padding: 2px 4px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); }
+  input[type=number] { width: 9ch; }
+  select { width: 36ch; max-width: 40vw; }
+  button { font: inherit; padding: 2px 10px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); cursor: pointer; }
+  button:hover { background: var(--paper); color: var(--ink); }
+  button:disabled { opacity: 0.4; cursor: default; background: var(--ink); color: var(--paper); }
+  label { color: var(--muted); display: flex; align-items: center; gap: 4px; }
+
+  /* the two panes and the bar between them; --split-x is the explorer's share of the width, --split-y the house's share
+     of the height when they stack */
+  main { display: grid; min-height: 0; grid-template-columns: minmax(0, var(--split-x, 50%)) 9px minmax(0, 1fr);
+         grid-template-areas: "explorer divider house"; }
+  .pane { position: relative; min-width: 0; min-height: 0; }
+  .ex-pane { grid-area: explorer; }
+  .house-pane { grid-area: house; }
+  iframe { display: block; width: 100%; height: 100%; border: 0; background: var(--paper); }
+  .divider { grid-area: divider; position: relative; background: var(--site); cursor: col-resize; touch-action: none; }
+  .divider::before { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: var(--site-rule); }
+  .divider::after { content: ""; position: absolute; left: 2px; top: 50%; width: 5px; height: 40px; margin-top: -20px;
+                    border-radius: 3px; background: var(--grip); }
+  .divider:hover::after, .divider:focus-visible::after, main.dragging .divider::after { background: var(--site-ink); }
+  .divider:focus-visible { outline: 2px solid var(--site-ink); outline-offset: -2px; }
+  main.dragging { cursor: col-resize; user-select: none; }
+  main.dragging iframe { pointer-events: none; }        /* the frames would take the pointer while it crosses them */
+  .down { position: absolute; inset: 0; display: grid; place-content: center; gap: 12px; padding: 24px;
+          background: var(--paper); text-align: left; }
+  .down code { display: block; padding: 8px 10px; background: #000000; color: var(--screen); white-space: pre-wrap; }   /* a terminal in both modes */
+  .down p { margin: 0; max-width: 60ch; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  @media (max-width: 760px) {
+    header { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "house explorer" "controls controls"; gap: 6px 12px; }
+    header .house-side { flex-direction: row; }
+    header .ex-side { justify-content: flex-end; }
+    .controls { justify-content: flex-start; gap: 6px 14px; }
+    #job-form { flex: 1 1 100%; }
+    #job-form select { flex: 1 1 0; width: 0; min-width: 0; max-width: none; }   /* else it is as wide as its longest option */
+    input[type=number], select, button { font-size: 16px; }      /* below 16px a phone zooms in on focus */
+    main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, var(--split-y, 55%)) 13px minmax(0, 1fr);
+           grid-template-areas: "house" "divider" "explorer"; }
+    .divider { cursor: row-resize; }
+    .divider::before { left: 0; right: 0; top: 6px; bottom: auto; width: auto; height: 1px; }
+    .divider::after { left: 50%; top: 4px; width: 44px; height: 5px; margin: 0 0 0 -22px; }
+    main.dragging { cursor: row-resize; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="side ex-side"><b>IMD Explorer</b><a id="open-explorer" href="https://explorer.imd.fun/" target="_blank" rel="noreferrer" title="Open this page on explorer.imd.fun">open</a></div>
+  <div class="controls">
+    <form id="seat-form">
+      <span>Seat #</span><input id="seat" type="number" min="0" max="1999" inputmode="numeric" aria-label="Seat number">
+      <button type="submit">Show in both</button>
+    </form>
+    <form id="job-form">
+      <span>Job</span>
+      <select id="job" aria-label="Active job"><option value="">Loading the active jobs…</option></select>
+      <button type="submit" id="follow-job">Follow Job</button>
+    </form>
+    <label title="When the explorer opens an agent or an active job, the house shows that seat or follows that job"><input id="follow" type="checkbox" checked> House follows the explorer</label>
+  </div>
+  <div class="side house-side"><b>Little Computer Pepes</b><a id="open-house" href="http://127.0.0.1:8795/" target="_blank" rel="noreferrer" title="Open the house on its own">open</a></div>
+</header>
+<main>
+  <div class="pane ex-pane"><iframe id="explorer" title="IMD Explorer"></iframe></div>
+  <div class="divider" id="divider" role="separator" tabindex="0" aria-label="Resize the two panes" aria-valuemin="15" aria-valuemax="85"
+       title="Drag to resize; double-click for the default split"></div>
+  <div class="pane house-pane">
+    <iframe id="house" title="Little Computer Pepes"></iframe>
+    <div class="down" id="house-down" hidden>
+      <p>The house isn't running on 127.0.0.1:8795. Start it in a terminal, in the lcp folder:</p>
+      <code>python3 -I serve.py . 8795</code>
+      <p>This pane loads it as soon as it answers.</p>
+    </div>
+  </div>
+</main>
+<script>
+  const LCP = 'http://127.0.0.1:8795/';
+  const UUID = /^\/jobs\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+  const $ = (id) => document.getElementById(id);
+  const explorer = $('explorer'), house = $('house'), seat = $('seat'), follow = $('follow'), jobSel = $('job');
+  const openExplorer = $('open-explorer'), openHouse = $('open-house'), down = $('house-down');
+  let houseUrl = LCP;
+
+  // ---------- the split: drag the bar (or arrow keys on it); remembered per browser, one value per layout ----------
+  const main = document.querySelector('main'), divider = $('divider');
+  const stacked = matchMedia('(max-width: 760px)');
+  const SPLIT = { side: { key: 'sbs:split-x', prop: '--split-x', def: 50 }, stack: { key: 'sbs:split-y', prop: '--split-y', def: 55 } };
+  const layout = () => SPLIT[stacked.matches ? 'stack' : 'side'];
+  let split = 50;
+
+  function setSplit(pct, save) {
+    split = Math.min(85, Math.max(15, pct));
+    main.style.setProperty(layout().prop, split + '%');
+    divider.setAttribute('aria-valuenow', String(Math.round(split)));
+    if (save) { try { localStorage.setItem(layout().key, String(split)); } catch {} }
+  }
+
+  function restoreSplit() {
+    let v = NaN;
+    try { v = parseFloat(localStorage.getItem(layout().key)); } catch {}
+    divider.setAttribute('aria-orientation', stacked.matches ? 'horizontal' : 'vertical');
+    setSplit(Number.isFinite(v) ? v : layout().def, false);
+  }
+  restoreSplit();
+  stacked.addEventListener('change', restoreSplit);
+
+  divider.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    divider.setPointerCapture(e.pointerId);
+    main.classList.add('dragging');
+    const box = main.getBoundingClientRect();
+    const move = (ev) => setSplit(stacked.matches ? (ev.clientY - box.top) / box.height * 100 : (ev.clientX - box.left) / box.width * 100, false);
+    const up = () => {
+      main.classList.remove('dragging');
+      divider.removeEventListener('pointermove', move); divider.removeEventListener('pointerup', up); divider.removeEventListener('pointercancel', up);
+      setSplit(split, true);
+    };
+    divider.addEventListener('pointermove', move); divider.addEventListener('pointerup', up); divider.addEventListener('pointercancel', up);
+  });
+  divider.addEventListener('dblclick', () => setSplit(layout().def, true));
+  divider.addEventListener('keydown', (e) => {
+    const by = e.shiftKey ? 10 : 2;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') setSplit(split - by, true);
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') setSplit(split + by, true);
+    else if (e.key === 'Home') setSplit(15, true);
+    else if (e.key === 'End') setSplit(85, true);
+    else return;
+    e.preventDefault();
+  });
+
+  // force: an explicit choice reloads the house even when it already shows that address
+  function showHouse(hash, force = false) {
+    const url = LCP + hash;
+    if (url === houseUrl && !force) return;
+    houseUrl = url;
+    house.src = url;
+    openHouse.href = url;
+  }
+
+  $('seat-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const n = Number(seat.value);
+    if (!Number.isInteger(n) || n < 0 || n > 1999) { seat.focus(); return; }
+    explorer.src = '/agents/' + n;
+    followedJob = null;
+    showHouse('#/seat/' + n, true);
+    renderJobs();
+  });
+
+  // ---------- jobs: the active ones to pick from; following one is the house's own (#/job/<id>) ----------
+  let jobs = [], followedJob = null;
+
+  function jobLabel(j) {
+    const o = (j.objective || '').replace(/\s+/g, ' ').trim();
+    return `${j.state} · ${o.length > 58 ? o.slice(0, 57) + '…' : o || j.template || 'job'} · ${j.id.slice(0, 8)}`;
+  }
+
+  function renderJobs() {
+    const keep = jobSel.value || followedJob;
+    jobSel.innerHTML = '';
+    const list = (jobs || []).slice();
+    if (followedJob && !list.some((j) => j.id === followedJob)) list.unshift({ id: followedJob, state: 'over', objective: 'the job the house follows' });
+    if (!list.length) {
+      jobSel.add(new Option(jobs === null ? 'Can\'t read the jobs right now' : 'No active jobs right now', ''));
+      jobSel.disabled = true; $('follow-job').disabled = true; return;
+    }
+    jobSel.disabled = false; $('follow-job').disabled = false;
+    for (const j of list) { const o = new Option(jobLabel(j), j.id); o.title = j.objective || ''; jobSel.add(o); }
+    if (keep && list.some((j) => j.id === keep)) jobSel.value = keep;
+  }
+
+  async function loadJobs() {
+    try {
+      const r = await fetch('/side-by-side/jobs', { cache: 'no-store' });
+      jobs = r.ok ? (await r.json()).jobs || [] : null;
+    } catch { jobs = null; }
+    renderJobs();
+    sendMode();                                      // the house's "Random active job" knows how many there are
+  }
+  loadJobs();
+  setInterval(loadJobs, 30000);
+
+  function followJob(id, fromExplorer = false) {
+    followedJob = id;
+    if (!fromExplorer) explorer.src = '/jobs/' + id;
+    showHouse('#/job/' + id, !fromExplorer);
+    renderJobs();
+    jobSel.value = id;
+  }
+
+  $('job-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (jobSel.value) followJob(jobSel.value);
+  });
+
+  // one of the active jobs, read fresh, picked at random; another one than the job followed now when there is a choice
+  // (the house's "Random active job" button asks for it)
+  async function randomJob() {
+    await loadJobs();
+    const pool = (jobs || []).filter((j) => j.id !== followedJob);
+    const list = pool.length ? pool : jobs || [];
+    if (list.length) followJob(list[Math.floor(Math.random() * list.length)].id);
+  }
+
+  // The explorer pane is this page's own origin (the local pass-through), so its address can be read; the house
+  // pane is another port and cannot be. The house follows only when the explorer's address changes: an agent page
+  // shows that seat, an active job's page follows that job.
+  let lastPath = null;
+  async function explorerMoved(pathname) {
+    const a = /^\/agents\/(\d{1,4})$/.exec(pathname);
+    if (a && +a[1] <= 1999) {
+      seat.value = a[1];
+      if (follow.checked) { followedJob = null; showHouse('#/seat/' + a[1]); }
+      return;
+    }
+    const j = UUID.exec(pathname);
+    if (!j || !follow.checked || j[1] === followedJob) return;
+    if (!jobs || !jobs.some((x) => x.id === j[1])) await loadJobs();         // a job opened since the last reading
+    if (jobs && jobs.some((x) => x.id === j[1]) && UUID.exec(explorer.contentWindow.location.pathname)?.[1] === j[1]) followJob(j[1], true);
+  }
+
+  // A step row opened on the followed job's explorer page (each row is a <details class="step-fold"> in li#node-<key>):
+  // the house shows that step's seat if the step runs now; the house decides, and leaves a step that is over alone.
+  function watchSteps() {
+    let doc;
+    try { doc = explorer.contentDocument; } catch { return; }
+    if (!doc || doc.sbsSteps) return;
+    doc.sbsSteps = true;
+    doc.addEventListener('toggle', (e) => {
+      const d = e.target;
+      if (!d.open || !d.matches || !d.matches('details.step-fold')) return;
+      const li = d.closest('li.step[id^="node-"]'), j = UUID.exec(explorer.contentWindow.location.pathname);
+      if (!li || !j || !follow.checked || j[1] !== followedJob) return;
+      showHouse('#/job/' + j[1] + '/step/' + encodeURIComponent(li.id.slice(5)), true);
+    }, true);                                        // toggle does not bubble; the capture phase still sees it
+  }
+  explorer.addEventListener('load', watchSteps);
+
+  // ---------- light or dark: the explorer's switch decides for this page and the house ----------
+  // the house also hears that it sits in this split view: its own button then says "Hide explorer"
+  function sendMode() {
+    try {
+      house.contentWindow.postMessage({ type: 'lcp:mode', mode: document.documentElement.dataset.mode }, 'http://127.0.0.1:8795');
+      house.contentWindow.postMessage({ type: 'lcp:split', on: true, activeJobs: (jobs || []).length }, 'http://127.0.0.1:8795');
+    } catch {}
+  }
+
+  // "Hide explorer" in the house: this page gives way to the house alone, on the seat or job it shows;
+  // "Random active job" in the house: follow one
+  window.addEventListener('message', (e) => {
+    if (e.origin !== 'http://127.0.0.1:8795' || e.source !== house.contentWindow || !e.data) return;
+    if (e.data.type === 'lcp:randomJob') { randomJob(); return; }
+    if (e.data.type !== 'lcp:hideExplorer') return;
+    const hash = typeof e.data.hash === 'string' && /^#[\w\/.-]*$/.test(e.data.hash) ? e.data.hash : '';
+    location.href = LCP + hash;
+  });
+  function followMode() {
+    let m;
+    try { m = explorer.contentDocument.documentElement.dataset.theme; } catch { return; }
+    if ((m === 'light' || m === 'dark') && m !== document.documentElement.dataset.mode) {
+      document.documentElement.dataset.mode = m;
+      sendMode();
+    }
+  }
+  house.addEventListener('load', sendMode);
+  sendMode();
+
+  setInterval(() => {
+    watchSteps();
+    followMode();
+    let loc;
+    try { loc = explorer.contentWindow.location; } catch { return; }
+    if (loc.protocol === 'about:') return;           // the frame's empty start, before its first page
+    const path = loc.pathname + loc.search;
+    if (path === lastPath) return;
+    const first = lastPath === null;
+    lastPath = path;
+    openExplorer.href = 'https://explorer.imd.fun' + path;
+    if (!first) explorerMoved(loc.pathname);
+  }, 400);
+
+  // Show how to start the house while 127.0.0.1:8795 does not answer, and load it once it does.
+  async function checkHouse() {
+    let up = false;
+    try { up = (await (await fetch('/side-by-side/lcp', { cache: 'no-store' })).json()).up; } catch {}
+    if (!up) { down.hidden = false; setTimeout(checkHouse, 5000); return; }
+    if (!down.hidden) { down.hidden = true; house.src = houseUrl; }
+    setTimeout(checkHouse, 15000);
+  }
+  checkHouse();
+
+  // ---------- the start: ?seat=N, and ?job=<id> when the house followed one (its "Show on IMD Explorer" button) ----------
+  const params = new URLSearchParams(location.search), ps = params.get('seat') || '', pj = params.get('job') || '';
+  const startSeat = /^\d{1,4}$/.test(ps) && +ps <= 1999 ? ps : null;
+  const startJob = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pj) ? pj : null;
+  explorer.src = startSeat ? '/agents/' + startSeat : startJob ? '/jobs/' + startJob : '/';
+  if (startSeat) seat.value = startSeat;
+  if (startJob) followedJob = startJob;
+  showHouse(startJob ? '#/job/' + startJob : startSeat ? '#/seat/' + startSeat : '', true);
+</script>
+</body>
+</html>
