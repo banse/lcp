@@ -5,7 +5,11 @@
 /proxy/seats/<n> (n = 0..1999) returns a few fields of api.imd.fun/seats/<n>: tokenId, online, daemonVersion,
 pausedByOwnerAt and the 20 newest tasks (nodeKey, role, launch kind, status, submittedAt, the first 100 characters
 of the objective). That route sends no CORS header, so a browser cannot read it directly; the full record is
-0.2-0.8 MB, so the relay trims it and caches it for 60 s. Listens on 127.0.0.1 only.
+0.2-0.8 MB, so the relay trims it and caches it for 60 s.
+
+/proxy/jobs/<uuid> returns a job's id, state, template and launch kind (api.imd.fun/jobs/<id>, no CORS either):
+a running task's live event names its job but not the launch kind, and the kind decides token launch work or not.
+Cached for 10 minutes. Listens on 127.0.0.1 only.
 """
 import functools
 import gzip
@@ -17,6 +21,7 @@ import time
 import urllib.request
 
 CACHE = {}
+JOBS = {}
 FIELDS = ('tokenId', 'online', 'daemonVersion', 'pausedByOwnerAt')
 
 
@@ -41,6 +46,29 @@ def seat_record(n):
     return body
 
 
+def fetch_json(url):
+    req = urllib.request.Request(url, headers={'User-Agent': 'lcp-local/1', 'Accept-Encoding': 'gzip'})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        raw = r.read()
+        if r.headers.get('Content-Encoding') == 'gzip':
+            raw = gzip.decompress(raw)
+    return json.loads(raw)
+
+
+def job_record(jid):
+    hit = JOBS.get(jid)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    d = fetch_json(f'https://api.imd.fun/jobs/{jid}')
+    j = d.get('job', d)
+    launch = j.get('launch') or {}
+    out = {'id': j.get('id'), 'state': j.get('state'), 'template': j.get('template'),
+           'launch': launch.get('kind') if launch.get('requested') else None}
+    body = json.dumps(out).encode()
+    JOBS[jid] = (time.time(), body)
+    return body
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store')
@@ -50,16 +78,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        m = re.fullmatch(r'/proxy/seats/(\d{1,4})', self.path.split('?')[0])
-        if not m:
+        path = self.path.split('?')[0]
+        m = re.fullmatch(r'/proxy/seats/(\d{1,4})', path)
+        j = re.fullmatch(r'/proxy/jobs/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', path)
+        if not m and not j:
             return super().do_GET()
-        n = int(m.group(1))
-        if n >= 2000:
+        if m and int(m.group(1)) >= 2000:
             return self.send_error(404, 'no such seat')
         try:
-            body = seat_record(n)
+            body = seat_record(int(m.group(1))) if m else job_record(j.group(1))
         except Exception as e:  # noqa: BLE001 - report, never crash the server
-            return self.send_error(502, f'seat record unavailable: {type(e).__name__}')
+            return self.send_error(502, f'record unavailable: {type(e).__name__}')
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))

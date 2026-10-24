@@ -18,7 +18,7 @@ function liveTask(events, id) {
   if (!mine.length) return null;
   mine.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const e = mine[0];
-  return { nodeKey: e.step || e.nodeKey || '', role: e.role || '', launch: e.launch || null, objective: e.objective || '' };
+  return { nodeKey: e.step || e.nodeKey || '', role: e.role || '', launch: e.launch || null, objective: e.objective || '', jobId: e.jobId || null };
 }
 
 // Which kind of work a task is. What he does for each category is the theme's mapping (mapping.js).
@@ -84,6 +84,25 @@ export function updateStatus(daemonVersion, releases, now = Date.now()) {
   return { current: daemonVersion, latest: latest.version + '+' + latest.sha.slice(0, 8), behind, latestAgeH, needs };
 }
 
+// a job's launch kind, through the local relay (/jobs has no CORS); null = no launch, undefined = not readable here
+const jobKinds = new Map();
+async function jobLaunch(jobId) {
+  if (!jobId) return undefined;
+  if (jobKinds.has(jobId)) return jobKinds.get(jobId);
+  try {
+    const r = await fetch('/proxy/jobs/' + jobId, { cache: 'no-store' });
+    if (!r.ok) return undefined;
+    const kind = (await r.json()).launch || null;
+    jobKinds.set(jobId, kind);
+    return kind;
+  } catch (e) { return undefined; }
+}
+
+function launchWork(t, kind) {
+  const isToken = TOKEN_LAUNCHES.includes(kind);
+  return { category: isToken ? 'token' : 'other', label: isToken ? CATEGORY_SAY.token : 'a launch task (' + kind + ')', step: t.nodeKey };
+}
+
 async function seatDetail(id) {
   for (const url of ['/proxy/seats/' + id, API + '/seats/' + id]) {
     try {
@@ -124,20 +143,32 @@ export class LiveFeed {
 
   stop() { this.seat = null; clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer); }
 
-  // the task he starts: the live event if it names the step, else his usual kind of work
+  // the task he starts: the live event if it names the step, else his usual kind of work. A launch step's event names
+  // the job but not the launch kind: the job record says (relay, see refineWork); until then, or without the relay,
+  // the seat's recent launches decide.
   guessWork(events) {
     const t = liveTask(events, this.seat);
     if (t && t.nodeKey) {
-      if (LAUNCH_STEP.test(t.nodeKey) && !t.launch) {     // token or not: the seat's recent launches decide
+      if (LAUNCH_STEP.test(t.nodeKey) && !t.launch && jobKinds.get(t.jobId)) return { ...launchWork(t, jobKinds.get(t.jobId)), jobId: t.jobId };
+      if (LAUNCH_STEP.test(t.nodeKey) && !t.launch) {
         const kinds = ((this.detail && this.detail.recent) || []).map((r) => r.launch).filter(Boolean).slice(0, 10);
         const token = kinds.filter((k) => TOKEN_LAUNCHES.includes(k)).length;
         const isToken = !kinds.length || token * 2 >= kinds.length;
-        return { category: isToken ? 'token' : 'other', label: isToken ? CATEGORY_SAY.token : 'a launch task', step: t.nodeKey, guess: true };
+        return { category: isToken ? 'token' : 'other', label: isToken ? CATEGORY_SAY.token : 'a launch task', step: t.nodeKey, guess: true, jobId: t.jobId, refine: true };
       }
       return { category: taskCategory(t), label: describeTask(t), step: t.nodeKey };
     }
     const usual = usualCategory(this.detail && this.detail.recent);
     return usual ? { category: usual, label: CATEGORY_SAY[usual], guess: true } : { category: 'other', label: 'a task', guess: true };
+  }
+
+  // the job record names the launch kind: if it differs from the guess, he moves to the right place
+  async refineWork(w) {
+    if (!w || !w.refine || !w.jobId) return;
+    const id = this.seat, kind = await jobLaunch(w.jobId);
+    if (!kind || id !== this.seat) return;
+    const sure = launchWork({ nodeKey: w.step }, kind);
+    if (sure.category !== w.category) this.onEvent({ type: 'workkind', ...sure });
   }
 
   // the seat record (online, worker version) through the local relay, and the newest worker release
@@ -193,8 +224,15 @@ export class LiveFeed {
       const status = { seat: id, data: cur, asleep, verifierDown, idleHours, at: new Date(), live: true, health: sw.health,
         online, paused, version: this.detail ? this.detail.daemonVersion : null, update: this.update, detailRead: !!this.detail };
       if (!this.prev) {
+        if (cur && cur.working) {                       // a launch step: wait briefly for its job's launch kind
+          const t = liveTask(sw.events, id);
+          if (t && t.jobId && LAUNCH_STEP.test(t.nodeKey)) await Promise.race([jobLaunch(t.jobId), new Promise((r) => setTimeout(r, 2500))]);
+          if (id !== this.seat) return;
+        }
+        const w = cur && cur.working ? this.guessWork(sw.events) : null;
         this.onEvent({ type: 'init', seat: id, data: cur, asleep, working: !!(cur && cur.working),
-          accepted: cur ? cur.accepted : 0, verifierDown, paused, update: this.update, ...(cur && cur.working ? this.guessWork(sw.events) : {}) });
+          accepted: cur ? cur.accepted : 0, verifierDown, paused, update: this.update, ...(w || {}) });
+        this.refineWork(w);
       } else {
         const posted = cur && this.prev.data && cur.attempts !== this.prev.data.attempts;
         if (cur && (posted || (Date.now() - this.lastDetailAt > 2 * 60000 && prevChanged(this.prev.data, cur)))) setTimeout(() => this.checkDetail(), posted ? 1500 : 0);
@@ -214,7 +252,7 @@ export class LiveFeed {
     const p = prev.data || {}, c = cur || {};
     const d = (k) => (c[k] || 0) - (p[k] || 0);
     if (prev.asleep && !asleep) this.onEvent({ type: 'wake' });
-    if (!p.working && c.working) this.onEvent({ type: 'work', ...this.guessWork(events) });
+    if (!p.working && c.working) { const w = this.guessWork(events); this.onEvent({ type: 'work', ...w }); this.refineWork(w); }
     if (p.working && !c.working) this.onEvent({ type: 'workdone' });
     if (d('attempts') > 0) this.onEvent({ type: 'post', n: d('attempts') });
     if (d('accepted') > 0) this.onEvent({ type: 'accepted', n: d('accepted') });

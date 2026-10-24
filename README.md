@@ -74,5 +74,11 @@ A browser wallet only injects into http pages, so serve it rather than opening t
   SOON sign on the front door and goes out; lights and fire go out and the dog waits by the door until he comes
   home. The field was null on every seat sampled, so the scene is built from the field's name, not from a seen
   pause.
+- Launch steps (contract builds, tests, manifests, audits): the live event names the job but not its launch kind, so
+  `serve.py` also relays `/proxy/jobs/<id>` (id, state, template, launch kind; `/jobs` has no CORS either). Token
+  launches (custom_token, univ4_hook, evm_project) are token launch work; anything else, such as evm_contracts, is
+  other launch work. Without the relay the seat's recent launches decide. Measured 2026-10-24 01:00 UTC on the
+  burn tracker contract job (evm_contracts): its five busy seats had mostly token launches behind them and all went
+  to the computer before; with the job record they all cook.
 - Console helpers: `__house()`, `__live` (`__live.onEvent({type: 'pause'})` plays an event through the page).
 - Fonts come from Google Fonts here; a swarm-hosted build must bundle them (the host allows same-origin scripts only).
