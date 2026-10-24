@@ -5,7 +5,7 @@ import { MAPPINGS } from '../mapping.js';
 
 export const pixel = {
   id: 'pixel',
-  label: 'Pixel',
+  label: 'LCP',
   mapping: MAPPINGS.pixel,
   spots: SPOTS,
   activityText: {

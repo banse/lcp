@@ -28,7 +28,7 @@ and is remembered per browser.
   works on, as on imd.fun; in the armchair only his head shows over the back, in bed the back of his head on the
   pillow. When he knocks on the glass, his front-facing sprite fills the screen and bumps towards you with each
   knock.
-- **Pixel** (parked, `src/themes/pixel.js`): the 480 x 320 pixel house in the original game's look.
+- **LCP** (parked, `src/themes/pixel.js`; the switch said Pixel until 2026-10-24): the 480 x 320 pixel house in the original game's look.
 
 ## Run
 
