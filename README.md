@@ -35,7 +35,7 @@ and is remembered per browser.
 A browser wallet only injects into http pages, so serve it rather than opening the file:
 
     python3 -I serve.py . 8795             # from this folder; caching off
-    open http://127.0.0.1:8795/#demo       # every event in about six minutes
+    open http://127.0.0.1:8795/#demo       # every event, each when he is done with the last (~9 min a loop)
     open http://127.0.0.1:8795/#/seat/558  # a live seat; no hash opens a random busy seat
 
 ## How it works
@@ -83,5 +83,8 @@ A browser wallet only injects into http pages, so serve it rather than opening t
   other launch work. Without the relay the seat's recent launches decide. Measured 2026-10-24 01:00 UTC on the
   burn tracker contract job (evm_contracts): its five busy seats had mostly token launches behind them and all went
   to the computer before; with the job record they all cook.
-- Console helpers: `__house()`, `__live` (`__live.onEvent({type: 'pause'})` plays an event through the page).
+- The demo waits for him: each step comes when he has done the last (reached the place and worked there about 4 s,
+  or finished the scene), with a 2-minute cap. It keeps its own time of day: day at the start, dusk and then night
+  when he goes to bed, dawn and then day when he wakes; a live seat follows the visitor's clock again.
+- Console helpers: `__house()`, `__live`, `__theme()`, `__demo` (`__live.onEvent({type: 'pause'})` plays an event through the page).
 - Fonts come from Google Fonts here; a swarm-hosted build must bundle them (the host allows same-origin scripts only).

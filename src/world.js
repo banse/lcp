@@ -300,7 +300,11 @@ export function drawHouse(g) {
 }
 
 // ---------- sky behind the house ----------
+let phaseOverride = null;          // the demo sets its own time of day; null = the visitor's clock
+export function setPhase(phase) { phaseOverride = phase; }
+
 export function skyPhase(date) {
+  if (phaseOverride) return phaseOverride;
   const h = date.getHours() + date.getMinutes() / 60;
   if (h < 5 || h >= 21) return 'night';
   if (h < 7) return 'dawn';

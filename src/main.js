@@ -5,6 +5,7 @@ import { wallets, connect, seatsOf } from './wallet.js';
 import { Sound } from './sound.js';
 import { CATEGORIES } from './mapping.js';
 import { THEMES, DEFAULT_THEME } from './themes/index.js';
+import { setPhase } from './world.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -18,7 +19,7 @@ const ownedSeats = new Set();
 const KNOCK_AGAIN_MS = 30 * 60000, ACK_MS = 6 * 3600000;
 
 const live = new LiveFeed(onEvent, onStatus);
-const demo = new DemoFeed(onEvent, onStatus);
+const demo = new DemoFeed(onEvent, onStatus, () => house);
 
 // ---------- render loop: logic at 30 ticks a second ----------
 let last = performance.now(), acc = 0;
@@ -76,7 +77,7 @@ function setTitle(text, num) {
 function visit(id) {
   id = Math.max(0, Math.min(1999, Math.floor(Number(id))));
   if (!Number.isFinite(id)) return;
-  demo.stop();
+  demo.stop(); setPhase(null);
   mode = 'live'; seatId = id;
   house = new House(id, sound, theme); seatSeed = id; theme.setSeed(id);
   house.onLetterDone = showLetter;
@@ -99,7 +100,7 @@ function startDemo() {
   house.onKnock = showKnock; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
   setTitle('Demo: a made-up seat, one fast day', null);
-  $('lede').textContent = 'Every event the house knows, in about six minutes: the phone, each kind of work (token launch, websites, research, video, audio, images, oracles), mail, a failed run, a worker update, the checker going down, sleep with mail at night, and the owner pausing the seat.';
+  $('lede').textContent = 'Every event the house knows, one after another, each when he is done with the last: the phone, each kind of work (token launch, websites, research, video, audio, images, oracles), mail, a failed run, a worker update, the checker going down, sleep with mail at night, and the owner pausing the seat.';
   $('demo-btn').setAttribute('aria-pressed', 'true');
   if (location.hash !== '#demo') history.replaceState(null, '', '#demo');
   demo.start();
@@ -168,6 +169,7 @@ function workLine(e) {
 }
 
 function onEvent(e) {
+  if (e.type === 'phase') { setPhase(e.phase); return; }      // the demo's time of day
   if (!house) return;
   if (e.type === 'init') {
     const st = e.paused ? 'He\'s out: the seat\'s owner paused it. A sign on the door says he\'ll be back soon.' : e.asleep ? 'He\'s asleep: the seat left the network or has had no task for three days.' : e.working ? 'He\'s working on ' + (e.label || 'a task') + (e.guess ? ' (probably, going by his recent work).' : '.') : 'He\'s at home, between tasks.';
@@ -381,3 +383,4 @@ requestAnimationFrame(frame);
 window.__house = () => house;   // for local testing in the console
 window.__live = live;
 window.__theme = () => theme;
+window.__demo = demo;

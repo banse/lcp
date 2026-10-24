@@ -291,45 +291,68 @@ export class LiveFeed {
   }
 }
 
-// A scripted day in fast motion: every event the house knows, about two minutes per loop.
+// A scripted day: every event the house knows, one after another. Each step waits until he has done what it set off
+// (reached the place and worked there a few seconds, or finished the scene) and holds a moment before the next one.
+// house: () => the House the page shows.
 export class DemoFeed {
-  constructor(onEvent, onStatus) {
-    this.onEvent = onEvent; this.onStatus = onStatus; this.timers = [];
+  constructor(onEvent, onStatus, house) {
+    this.onEvent = onEvent; this.onStatus = onStatus; this.house = house; this.timers = [];
     this.data = { tokenId: 'demo', agentId: '00000', attempts: 120, accepted: 7, rejected: 2, failed: 1, pending: 0, queued: 0,
       working: false, last: new Date().toISOString() };
   }
 
   start() {
     this.stop();
-    const D = this.data;
+    const D = this.data, h = () => this.house();
     const status = (asleep = false, verifierDown = false, paused = false) => this.onStatus({ seat: 'demo', data: { ...D }, asleep, verifierDown, paused, at: new Date(), live: false });
-    const work = (category, label) => ({ type: 'work', category, label });
-    const plan = [
-      [0, () => { this.onEvent({ type: 'init', seat: 'demo', data: D, asleep: false, working: false, accepted: D.accepted, verifierDown: false, letter: true }); status(); }],
-      [14, () => { D.queued = 1; this.onEvent({ type: 'phone' }); status(); }],
-      [22, () => { D.queued = 0; D.working = true; this.onEvent(work('token', 'token launch work')); status(); }],
-      [40, () => { D.attempts++; this.onEvent({ type: 'post', n: 1 }); this.onEvent({ type: 'submitted', category: 'token', label: 'token launch work', task: { nodeKey: 'build_contract_project' } }); status(); }],
-      [52, () => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(); }],
-      [62, () => { this.onEvent({ type: 'workkind', category: 'website', label: 'a website' }); status(); }],
-      [76, () => { this.onEvent({ type: 'workkind', category: 'research', label: 'a research task' }); status(); }],
-      [90, () => { this.onEvent({ type: 'workkind', category: 'video', label: 'a video task' }); status(); }],
-      [104, () => { this.onEvent({ type: 'workkind', category: 'audio', label: 'an audio task' }); status(); }],
-      [118, () => { this.onEvent({ type: 'workkind', category: 'image', label: 'an image task' }); status(); }],
-      [132, () => { this.onEvent({ type: 'workkind', category: 'oracle', label: 'an oracle question' }); status(); }],
-      [148, () => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }],
-      [160, () => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }],
-      [174, () => { this.onEvent({ type: 'update', info: { current: '0.1.4+011c9f4c', latest: '0.1.4+1103e27b', behind: 3, latestAgeH: 7, needs: true } }); status(); }],
-      [204, () => { this.onEvent({ type: 'updated', from: '0.1.4+011c9f4c', to: '0.1.4+1103e27b', info: { needs: false } }); status(); }],
-      [228, () => { this.onEvent({ type: 'verifier', down: true }); status(false, true); }],
-      [240, () => { this.onEvent({ type: 'verifier', down: false }); status(); }],
-      [246, () => { this.onEvent({ type: 'sleep' }); status(true); }],
-      [256, () => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(true); }],
-      [270, () => { this.onEvent({ type: 'wake' }); status(); }],
-      [330, () => { this.onEvent({ type: 'pause' }); status(false, false, true); }],
-      [354, () => { this.onEvent({ type: 'resume' }); status(); }],
-      [374, () => this.start()],
+    const kind = (category, label) => this.onEvent({ type: 'workkind', category, label });
+    // waits, made when their step starts: true once the scene is over
+    const held = (test, s) => { let since = null; return () => { const x = h(); if (x && test(x)) { since = since ?? Date.now(); return Date.now() - since >= s * 1000; } since = null; return false; }; };
+    const doing = (action, s = 4) => held((x) => x.state.action === action, s);
+    const finished = (name) => () => { const x = h(); return !!x && !x.queue.some((q) => q.name === name) && !(x.current && x.current.name === name); };
+    const after = (s) => { const t = Date.now() + s * 1000; return () => Date.now() >= t; };
+    const phase = (p) => this.onEvent({ type: 'phase', phase: p });
+    const update = { current: '0.1.4+011c9f4c', latest: '0.1.4+1103e27b', behind: 3, latestAgeH: 7, needs: true };
+    const steps = [                                  // [what happens, wait until, then hold seconds]
+      [() => { phase('day'); this.onEvent({ type: 'init', seat: 'demo', data: D, asleep: false, working: false, accepted: D.accepted, verifierDown: false, letter: true }); status(); }, () => finished('letter'), 2],
+      [() => { D.queued = 1; this.onEvent({ type: 'phone' }); status(); }, () => finished('phone'), 1],
+      [() => { D.queued = 0; D.working = true; this.onEvent({ type: 'work', category: 'token', label: 'token launch work' }); status(); }, () => doing('type'), 0],
+      [() => { D.attempts++; this.onEvent({ type: 'post', n: 1 }); this.onEvent({ type: 'submitted', category: 'token', label: 'token launch work', task: { nodeKey: 'build_contract_project' } }); status(); }, () => finished('post'), 1],
+      [() => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(); }, () => finished('mail'), 1],
+      [() => { kind('website', 'a website'); status(); }, () => doing('cook'), 0],
+      [() => { kind('research', 'a research task'); status(); }, () => doing('research'), 0],
+      [() => { kind('video', 'a video task'); status(); }, () => doing('tv'), 0],
+      [() => { kind('audio', 'an audio task'); status(); }, () => doing('piano'), 0],
+      [() => { kind('image', 'an image task'); status(); }, () => doing('paint'), 0],
+      [() => { kind('oracle', 'an oracle question'); status(); }, () => doing('telescope'), 0],
+      [() => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }, () => finished('smoke'), 2],
+      [() => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }, () => finished('mail'), 2],
+      // the page knocks for an update 9 s after it arrives: wait for the parcel and the knock to be over
+      [() => { this.onEvent({ type: 'update', info: update }); status(); }, () => { const t = after(11), k = finished('knock'); return () => t() && k() && !!h() && h().state.parcel; }, 2],
+      [() => { this.onEvent({ type: 'updated', from: update.current, to: update.latest, info: { needs: false } }); status(); }, () => finished('install'), 2],
+      [() => { this.onEvent({ type: 'verifier', down: true }); status(false, true); }, () => after(5), 0],
+      [() => { this.onEvent({ type: 'verifier', down: false }); status(); }, () => after(1), 1],
+      [() => { phase('dusk'); this.onEvent({ type: 'sleep' }); status(true); }, () => held((x) => x.man.pose === 'sleep', 2), 0],
+      [() => phase('night'), () => after(3), 0],
+      [() => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(true); }, () => held((x) => x.state.mailbox > 0, 3), 0],
+      [() => { phase('dawn'); this.onEvent({ type: 'wake' }); status(); this.timers.push(setTimeout(() => phase('day'), 5000)); }, () => finished('mail'), 2],
+      [() => { this.onEvent({ type: 'pause' }); status(false, false, true); }, () => held((x) => x.man.hidden, 4), 0],
+      [() => { this.onEvent({ type: 'resume' }); status(); }, () => held((x) => !x.man.hidden && !(x.current && x.current.name === 'away'), 3), 0],
     ];
-    for (const [s, fn] of plan) this.timers.push(setTimeout(fn, s * 1000));
+    let i = 0;
+    const next = () => {
+      if (i >= steps.length) { this.start(); return; }
+      const [run, wait, rest] = steps[i++];
+      this.step = i;
+      run();
+      const done = wait(), t0 = Date.now();
+      const check = () => {
+        if (done() || Date.now() - t0 > 120000) this.timers.push(setTimeout(next, rest * 1000));   // never stall longer than 2 min
+        else this.timers.push(setTimeout(check, 250));
+      };
+      this.timers.push(setTimeout(check, 250));
+    };
+    next();
   }
 
   stop() { this.timers.forEach(clearTimeout); this.timers = []; }
