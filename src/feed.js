@@ -22,6 +22,9 @@ function liveTask(events, id) {
 // What he does for a task (owner's mapping, 2026-10-24): oracle = telescope, research = book, video = TV,
 // audio = piano, websites = cooking, images = easel, token launch work = computer, everything else = cooking.
 const TOKEN_LAUNCHES = ['custom_token', 'evm_project', 'univ4_hook'];
+// launch steps carry their launch kind only once posted (measured on 12 seats, 2026-10-24: 9 of 11 contract builds
+// were token launches)
+const LAUNCH_STEP = /contract_project|foundry|manifest|^audit_|deploy/;
 export function taskKind(t) {
   if (!t) return null;
   const k = (t.nodeKey || '').toLowerCase(), o = (t.objective || '').toLowerCase();
@@ -30,7 +33,7 @@ export function taskKind(t) {
   if (/video/.test(k) || /\bvideo\b/.test(o.slice(0, 60))) return 'tv';
   if (/audio|music|sound|song|voice|podcast/.test(k) || /\b(audio|music|song|soundtrack|podcast)\b/.test(o.slice(0, 60))) return 'piano';
   if (/website|site|frontend|design_critic|landing/.test(k)) return 'cook';
-  if (/image|illustrat|artwork/.test(k)) return 'easel';
+  if (/image|illustrat|artwork|logo/.test(k)) return 'easel';
   if (TOKEN_LAUNCHES.includes(t.launch)) return 'computer';
   return 'cook';
 }
@@ -133,8 +136,13 @@ export class LiveFeed {
   guessWork(events) {
     const t = liveTask(events, this.seat);
     if (t && t.nodeKey) {
-      const kind = taskKind(t);
-      if (kind !== 'cook' || /website|site|frontend|design_critic/.test(t.nodeKey)) return { kind, label: describeTask(t), step: t.nodeKey };
+      if (LAUNCH_STEP.test(t.nodeKey) && !t.launch) {     // computer or stove: the seat's recent launches decide
+        const kinds = ((this.detail && this.detail.recent) || []).map((r) => r.launch).filter(Boolean).slice(0, 10);
+        const token = kinds.filter((k) => TOKEN_LAUNCHES.includes(k)).length;
+        const computer = !kinds.length || token * 2 >= kinds.length;
+        return { kind: computer ? 'computer' : 'cook', label: computer ? KIND_SAY.computer : 'a launch task', step: t.nodeKey, guess: true };
+      }
+      return { kind: taskKind(t), label: describeTask(t), step: t.nodeKey };
     }
     const usual = usualKind(this.detail && this.detail.recent);
     return usual ? { kind: usual, label: KIND_SAY[usual], guess: true } : { kind: 'cook', label: 'a task', guess: true };

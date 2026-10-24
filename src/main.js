@@ -96,14 +96,21 @@ function startDemo() {
   demo.start();
 }
 
+// a seat working right now; if none is, one that finished a task in the last hour, else in the last 24 hours
 async function randomBusySeat() {
   try {
-    const sw = live.swarm || await live.fetchSwarm();
-    const day = Date.now() - 24 * 3600 * 1000;
-    const busy = Object.values(sw.seats).filter((s) => s.last && Date.parse(s.last) > day);
-    const pick = busy.length ? busy[Math.floor(Math.random() * busy.length)] : null;
-    if (pick) visit(pick.tokenId);
-    else addDiary('No seat worked in the last 24 hours. Type a seat number instead.');
+    let sw;
+    try { sw = await live.fetchSwarm(); } catch (e) { sw = live.swarm; if (!sw) throw e; }
+    const all = Object.values(sw.seats), now = Date.now();
+    const since = (h) => all.filter((s) => s.last && now - Date.parse(s.last) < h * 3600000);
+    const working = all.filter((s) => s.working);
+    const pool = working.length ? working : since(1).length ? since(1) : since(24);
+    const pick = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+    if (!pick) { addDiary('No seat worked in the last 24 hours. Type a seat number instead.'); return; }
+    visit(pick.tokenId);
+    addDiary(working.length
+      ? `Seat #${pick.tokenId} is ${working.length === 1 ? 'the only seat' : 'one of ' + working.length + ' seats'} working right now.`
+      : `No seat is working right now; seat #${pick.tokenId} finished a task ${ago(Date.parse(pick.last))}.`);
   } catch (e) {
     addDiary('Can\'t reach the swarm right now. Type a seat number or try the demo.');
   }
