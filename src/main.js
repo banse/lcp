@@ -38,7 +38,8 @@ function draw() {
 
 function fit() {
   const avail = Math.min(document.querySelector('.page').clientWidth, window.innerWidth - 32);
-  canvas.style.width = theme.cssWidth(avail);
+  canvas.style.width = '100%';
+  canvas.parentElement.style.width = theme.cssWidth(avail);   // the screen box carries the width; the letter covers it
 }
 
 // ---------- looks: each theme draws the house its own way and has its own mapping ----------
@@ -303,6 +304,9 @@ function showLetter(why, late) {
   pendingLetter = null;
 }
 function hideLetter() { $('letter').hidden = true; pendingLetter = null; }
+$('letter-close').addEventListener('click', () => { $('letter').hidden = true; });
+$('letter').addEventListener('click', (e) => { if (e.target === $('letter')) $('letter').hidden = true; });   // a click beside it
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('letter').hidden) $('letter').hidden = true; });
 
 // ---------- wallet: which seats does it hold? ----------
 async function connectWallet(w) {
@@ -320,13 +324,10 @@ async function connectWallet(w) {
     box.innerHTML = '';
     if (!res.ids.length) note.textContent = `${short} holds no seats. You can still visit any seat by number.`;
     else {
-      note.textContent = `${short} holds ${res.ids.length === 1 ? 'one seat' : res.ids.length + ' seats'}${res.confirmed ? '' : ' (from the swarm\'s list; your wallet is on another network, so they were not checked onchain)'}.`;
+      note.textContent = `${short} holds ${res.ids.length === 1 ? 'one seat' : res.ids.length + ' seats'}${res.confirmed ? '' : ' (from the swarm\'s list, not checked onchain: wrong network)'}:`;
       for (const id of res.ids) {
         const b = document.createElement('button');
-        b.type = 'button'; b.className = 'door';
-        const small = document.createElement('small');
-        small.textContent = 'your seat';
-        b.append('#' + id, small);
+        b.type = 'button'; b.className = 'door'; b.title = 'Your seat'; b.textContent = '#' + id;
         b.addEventListener('click', () => visit(id));
         box.append(b);
       }

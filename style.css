@@ -35,6 +35,12 @@ h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; }
 
 .page > * { min-width: 0; }
 .stage { display: flex; justify-content: center; min-width: 0; }
+.screen { position: relative; max-width: 100%; }
+/* the daily letter, over the house */
+.letter-pop { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; background: rgba(0, 0, 0, 0.35); }
+.letter-pop .letter { width: min(460px, 100%); max-height: 100%; overflow: auto; display: grid; gap: 12px; }
+.letter-pop .letter h2 { margin: 0; }
+.letter-pop .letter button { justify-self: end; }
 #game {
   display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 3 / 2;
   image-rendering: pixelated; image-rendering: crisp-edges;
@@ -58,12 +64,12 @@ button[aria-pressed=true] { background: var(--wood-l); color: var(--paper-ink); 
 button:hover { filter: brightness(1.08); }
 button:focus-visible, input:focus-visible { outline: 3px solid var(--lamp); outline-offset: 2px; }
 
-.wallet { display: grid; gap: 10px; padding: 12px 14px; background: var(--night-2); border: 2px solid var(--wood); }
-.wallet p { margin: 0; }
+/* the connected wallet, at the right end of the seat row */
+.wallet { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; margin-left: auto; }
+.wallet p { margin: 0; color: var(--muted); }
 .doors { display: flex; flex-wrap: wrap; gap: 8px; }
 .doors:empty { display: none; }
 .door { background: var(--wood-l); color: var(--paper-ink); }
-.door small { display: block; font-weight: 400; font-size: 0.75rem; }
 
 .below { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 @media (max-width: 720px) { .below { grid-template-columns: 1fr; } }
@@ -146,7 +152,6 @@ html[data-look="imd"] button:hover { filter: none; background: #141414; }
 html[data-look="imd"] button[aria-pressed=true]:hover { background: var(--ink); }
 html[data-look="imd"] button:focus-visible, html[data-look="imd"] input:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
 html[data-look="imd"] input[type=number] { background: #000; color: var(--ink); border: 1.5px solid var(--ink); border-radius: 0; }
-html[data-look="imd"] .wallet { background: var(--term); border: 1.5px solid var(--wood-l); }
 html[data-look="imd"] .door { background: transparent; color: var(--ink); }
 html[data-look="imd"] .brand { background: var(--ink); color: #000; border: 1.5px solid var(--ink); font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; padding: 10px 16px; }
 html[data-look="imd"] .brand:hover { color: #000; background: #e6e6e6; }

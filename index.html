@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Courier+Prime&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:,">
 </head>
 <body>
 <header class="topbar">
@@ -16,10 +17,10 @@
       <button type="button" class="quiet" data-look-btn="imd" aria-pressed="false">IMD</button>
       <button type="button" class="quiet" data-look-btn="pixel" aria-pressed="false">LCP</button>
     </div>
-    <button type="button" id="wallet-btn">Connect wallet</button>
     <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog">Legend</button>
     <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
     <button type="button" id="sound-btn" class="quiet" aria-pressed="false">Sound off</button>
+    <button type="button" id="wallet-btn">Connect wallet</button>
   </nav>
 </header>
 <main class="page">
@@ -29,7 +30,16 @@
   </header>
 
   <div class="stage">
-    <canvas id="game" width="480" height="320" aria-label="The house of the chosen seat"></canvas>
+    <div class="screen">
+      <canvas id="game" width="480" height="320" aria-label="The house of the chosen seat"></canvas>
+      <div id="letter" class="letter-pop" hidden>
+        <article class="letter" role="dialog" aria-labelledby="letter-head">
+          <h2 id="letter-head">A letter from him</h2>
+          <pre id="letter-text"></pre>
+          <button type="button" id="letter-close">Close</button>
+        </article>
+      </div>
+    </div>
   </div>
 
   <section id="knock" class="knock" hidden role="alert">
@@ -47,13 +57,12 @@
       <button type="submit">Visit</button>
       <button type="button" id="random-btn" class="quiet">Random busy seat</button>
     </form>
-  </section>
-
-  <section id="wallet-panel" class="wallet" hidden aria-live="polite">
-    <p id="wallet-note"></p>
-    <div id="wallet-choices" class="doors"></div>
-    <div id="wallet-seats" class="doors"></div>
-    <button type="button" id="wallet-forget" class="quiet" hidden>Forget wallet</button>
+    <div id="wallet-panel" class="wallet" hidden aria-live="polite">
+      <p id="wallet-note"></p>
+      <div id="wallet-choices" class="doors"></div>
+      <div id="wallet-seats" class="doors"></div>
+      <button type="button" id="wallet-forget" class="quiet" hidden>Forget</button>
+    </div>
   </section>
 
   <section class="below">
@@ -74,10 +83,6 @@
         </dl>
         <p id="st-line" class="small">Waiting for the first reading.</p>
       </div>
-      <article id="letter" class="letter" hidden>
-        <h2 id="letter-head">A letter from him</h2>
-        <pre id="letter-text"></pre>
-      </article>
     </div>
   </section>
 
