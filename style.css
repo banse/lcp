@@ -83,8 +83,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--lamp); outl
 .letter h2 { font-family: var(--pixel); }
 .letter pre { margin: 0; font-family: var(--type); font-size: 0.98rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-.foot { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--night-2); padding-top: 14px; }
-.foot p { margin: 0; max-width: 80ch; }
 code { font-family: var(--type); font-size: 0.95em; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 
@@ -169,5 +167,4 @@ html[data-look="imd"] .legend::backdrop { background: rgba(0, 0, 0, 0.75); }
 html[data-look="imd"] .legend th { border-bottom-color: var(--paper-ink); }
 html[data-look="imd"] .legend td { border-bottom-color: #d6d6d2; }
 html[data-look="imd"] .small-ink { color: #5c5c58; }
-html[data-look="imd"] .foot { border-top-color: #141414; }
 html[data-look="imd"] .letter button, html[data-look="imd"] .knock button, html[data-look="imd"] .legend button { color: var(--paper-ink); border-color: var(--paper-ink); }
