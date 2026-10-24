@@ -81,14 +81,14 @@ export function disc(g, c, cx, cy, r) {
   }
 }
 
-const ROOMS = [
+export const ROOMS = [
   ['kitchen', 60, 214, 196, 290], ['living', 200, 214, 356, 290], ['study', 60, 132, 196, 208],
   ['music', 200, 132, 356, 208], ['bedroom', 60, 52, 196, 126], ['bath', 200, 52, 356, 126],
   ['stair', 360, 214, 440, 290], ['stair', 360, 132, 440, 208], ['stair', 360, 52, 440, 126],
 ];
 
 // windows: the static layer leaves their panes transparent so the sky shows through
-const WINDOWS = [[66, 222, 96, 244], [262, 222, 292, 244], [312, 142, 350, 176], [138, 64, 158, 90], [404, 226, 430, 252], [372, 66, 398, 90]];
+export const WINDOWS = [[66, 222, 96, 244], [262, 222, 292, 244], [312, 142, 350, 176], [138, 64, 158, 90], [404, 226, 430, 252], [372, 66, 398, 90]];
 
 function wallpaper(g, name, x0, y0, x1, y1) {
   const c = P[name];

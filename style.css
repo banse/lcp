@@ -108,3 +108,61 @@ code { font-family: var(--type); font-size: 0.95em; }
 .legend-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 8px; }
 .legend-head h2 { margin: 0; }
 .quiet-ink { background: transparent; color: var(--paper-ink); border-color: var(--wood-l); }
+
+.looks { display: inline-flex; gap: 0; }
+.looks button + button { border-left-width: 0; }
+.portrait { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: end; }
+.portrait canvas { width: 132px; height: 132px; display: block; }
+.portrait figcaption { color: var(--muted); font-size: 0.9rem; }
+
+/* The IMD look (2026-10-24): imd.fun's black page, IBM Plex Mono, outlined square controls, a terminal for the diary. */
+html[data-look="imd"] {
+  --night: #000000;
+  --night-2: #0b0b0b;
+  --ink: #f4f4f2;
+  --muted: #9a9a96;
+  --lamp: #38d050;
+  --wood: #f4f4f2;
+  --wood-l: #5c5c58;
+  --paper: #f4f4f2;
+  --paper-ink: #0b0b0b;
+  --term: #040404;
+  --term-edge: #18301c;
+  --pixel: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --type: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+html[data-look="imd"] body { font-size: 14px; line-height: 1.55; }
+html[data-look="imd"] h1 { font-size: clamp(1.35rem, 3vw, 1.9rem); letter-spacing: 0.01em; }
+html[data-look="imd"] h2 { font-size: 0.8rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+html[data-look="imd"] #game { image-rendering: auto; border: 1.5px solid var(--ink); box-shadow: none; background: #000; }
+html[data-look="imd"] button {
+  background: transparent; color: var(--ink); border: 1.5px solid var(--ink); border-radius: 0;
+  font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; padding: 8px 14px;
+}
+html[data-look="imd"] button.quiet { border-color: var(--wood-l); }
+html[data-look="imd"] button[aria-pressed=true] { background: var(--ink); color: #000; border-color: var(--ink); }
+html[data-look="imd"] button:hover { filter: none; background: #141414; }
+html[data-look="imd"] button[aria-pressed=true]:hover { background: var(--ink); }
+html[data-look="imd"] button:focus-visible, html[data-look="imd"] input:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+html[data-look="imd"] input[type=number] { background: #000; color: var(--ink); border: 1.5px solid var(--ink); border-radius: 0; }
+html[data-look="imd"] .wallet { background: var(--term); border: 1.5px solid var(--wood-l); }
+html[data-look="imd"] .door { background: transparent; color: var(--ink); }
+html[data-look="imd"] .diary { background: var(--term); border: 1.5px solid var(--term-edge); padding: 12px 14px; }
+html[data-look="imd"] .diary ol { font-size: 12.5px; }
+html[data-look="imd"] .diary li { grid-template-columns: 1rem 3.4rem 1fr; }
+html[data-look="imd"] .diary li::before { content: ">"; color: var(--lamp); }
+html[data-look="imd"] .diary li:first-child time, html[data-look="imd"] .diary li:first-child::before { color: var(--lamp); }
+html[data-look="imd"] .diary li.empty::before { content: none; }
+html[data-look="imd"] .counters dl div { background: var(--term); border-left: 2px solid var(--lamp); }
+html[data-look="imd"] .counters dd { font-size: 1.15rem; }
+html[data-look="imd"] .portrait canvas { border: 1.5px solid var(--ink); }
+html[data-look="imd"] .letter, html[data-look="imd"] .knock { border: 1.5px solid var(--ink); box-shadow: none; }
+html[data-look="imd"] .knock { border-color: var(--lamp); }
+html[data-look="imd"] .knock code { background: #e6e6e6; }
+html[data-look="imd"] .legend { border: 1.5px solid var(--ink); box-shadow: none; }
+html[data-look="imd"] .legend::backdrop { background: rgba(0, 0, 0, 0.75); }
+html[data-look="imd"] .legend th { border-bottom-color: var(--paper-ink); }
+html[data-look="imd"] .legend td { border-bottom-color: #d6d6d2; }
+html[data-look="imd"] .small-ink { color: #5c5c58; }
+html[data-look="imd"] .foot { border-top-color: #141414; }
+html[data-look="imd"] .letter button, html[data-look="imd"] .knock button, html[data-look="imd"] .legend button { color: var(--paper-ink); border-color: var(--paper-ink); }

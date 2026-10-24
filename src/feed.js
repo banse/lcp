@@ -1,3 +1,5 @@
+import { CATEGORY_SAY } from './mapping.js';
+
 // Seat data. LiveFeed polls the public /swarm route (CORS *) and the oracle panels; DemoFeed replays every event.
 // Both call onEvent({type, ...}) and onStatus(status). Nothing else leaves the page.
 const API = 'https://api.imd.fun';
@@ -19,45 +21,35 @@ function liveTask(events, id) {
   return { nodeKey: e.step || e.nodeKey || '', role: e.role || '', launch: e.launch || null, objective: e.objective || '' };
 }
 
-// What he does for a task (owner's mapping, 2026-10-24): oracle = telescope, research = book, video = TV,
-// audio = piano, websites = cooking, images = easel, token launch work = computer, everything else = cooking.
+// Which kind of work a task is. What he does for each category is the theme's mapping (mapping.js).
 const TOKEN_LAUNCHES = ['custom_token', 'evm_project', 'univ4_hook'];
 // launch steps carry their launch kind only once posted (measured on 12 seats, 2026-10-24: 9 of 11 contract builds
 // were token launches)
 const LAUNCH_STEP = /contract_project|foundry|manifest|^audit_|deploy/;
-export function taskKind(t) {
+export function taskCategory(t) {
   if (!t) return null;
   const k = (t.nodeKey || '').toLowerCase(), o = (t.objective || '').toLowerCase();
-  if (/oracle/.test(k)) return 'telescope';
-  if (/research/.test(k)) return 'book';
-  if (/video/.test(k) || /\bvideo\b/.test(o.slice(0, 60))) return 'tv';
-  if (/audio|music|sound|song|voice|podcast/.test(k) || /\b(audio|music|song|soundtrack|podcast)\b/.test(o.slice(0, 60))) return 'piano';
-  if (/website|site|frontend|design_critic|landing/.test(k)) return 'cook';
-  if (/image|illustrat|artwork|logo/.test(k)) return 'easel';
-  if (TOKEN_LAUNCHES.includes(t.launch)) return 'computer';
-  return 'cook';
+  if (/oracle/.test(k)) return 'oracle';
+  if (/research/.test(k)) return 'research';
+  if (/video/.test(k) || /\bvideo\b/.test(o.slice(0, 60))) return 'video';
+  if (/audio|music|sound|song|voice|podcast/.test(k) || /\b(audio|music|song|soundtrack|podcast)\b/.test(o.slice(0, 60))) return 'audio';
+  if (/website|site|frontend|design_critic|landing/.test(k)) return 'website';
+  if (/image|illustrat|artwork|logo/.test(k)) return 'image';
+  if (TOKEN_LAUNCHES.includes(t.launch)) return 'token';
+  return 'other';
 }
 
-export const KIND_SAY = {
-  telescope: 'an oracle question', book: 'a research task', tv: 'a video task', piano: 'an audio task',
-  easel: 'an image task', computer: 'token launch work', cook: 'a task',
-};
-
 export function describeTask(t) {
-  const kind = taskKind(t);
+  const c = taskCategory(t);
   if (!t) return '';
-  if (kind === 'cook') {
-    if (/website|site|frontend|design_critic|landing/.test((t.nodeKey || '').toLowerCase())) return 'a website';
-    if (t.launch) return 'a launch task (' + t.launch + ')';
-    return 'a task';
-  }
-  return KIND_SAY[kind];
+  if (c === 'other' && t.launch) return 'a launch task (' + t.launch + ')';
+  return CATEGORY_SAY[c];
 }
 
 // the seat's usual kind of work, from its newest tasks
-function usualKind(recent) {
+function usualCategory(recent) {
   const c = {};
-  for (const t of (recent || []).slice(0, 10)) { const k = taskKind(t); c[k] = (c[k] || 0) + 1; }
+  for (const t of (recent || []).slice(0, 10)) { const k = taskCategory(t); c[k] = (c[k] || 0) + 1; }
   const best = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
   return best ? best[0] : null;
 }
@@ -136,16 +128,16 @@ export class LiveFeed {
   guessWork(events) {
     const t = liveTask(events, this.seat);
     if (t && t.nodeKey) {
-      if (LAUNCH_STEP.test(t.nodeKey) && !t.launch) {     // computer or stove: the seat's recent launches decide
+      if (LAUNCH_STEP.test(t.nodeKey) && !t.launch) {     // token or not: the seat's recent launches decide
         const kinds = ((this.detail && this.detail.recent) || []).map((r) => r.launch).filter(Boolean).slice(0, 10);
         const token = kinds.filter((k) => TOKEN_LAUNCHES.includes(k)).length;
-        const computer = !kinds.length || token * 2 >= kinds.length;
-        return { kind: computer ? 'computer' : 'cook', label: computer ? KIND_SAY.computer : 'a launch task', step: t.nodeKey, guess: true };
+        const isToken = !kinds.length || token * 2 >= kinds.length;
+        return { category: isToken ? 'token' : 'other', label: isToken ? CATEGORY_SAY.token : 'a launch task', step: t.nodeKey, guess: true };
       }
-      return { kind: taskKind(t), label: describeTask(t), step: t.nodeKey };
+      return { category: taskCategory(t), label: describeTask(t), step: t.nodeKey };
     }
-    const usual = usualKind(this.detail && this.detail.recent);
-    return usual ? { kind: usual, label: KIND_SAY[usual], guess: true } : { kind: 'cook', label: 'a task', guess: true };
+    const usual = usualCategory(this.detail && this.detail.recent);
+    return usual ? { category: usual, label: CATEGORY_SAY[usual], guess: true } : { category: 'other', label: 'a task', guess: true };
   }
 
   // the seat record (online, worker version) through the local relay, and the newest worker release
@@ -162,7 +154,7 @@ export class LiveFeed {
     const before = this.detail, upd = det ? updateStatus(det.daemonVersion, rel) : null;
     const newest = det && det.recent && det.recent[0], prevNewest = before && before.recent && before.recent[0];
     if (!first && newest && (!prevNewest || newest.submittedAt !== prevNewest.submittedAt || newest.jobId !== prevNewest.jobId)) {
-      this.onEvent({ type: 'submitted', task: newest, kind: taskKind(newest), label: describeTask(newest) });
+      this.onEvent({ type: 'submitted', task: newest, category: taskCategory(newest), label: describeTask(newest) });
     }
     this.detail = det; this.releases = rel;
     if (!first && before && det && before.daemonVersion && det.daemonVersion && before.daemonVersion !== det.daemonVersion) {
@@ -273,19 +265,19 @@ export class DemoFeed {
     this.stop();
     const D = this.data;
     const status = (asleep = false, verifierDown = false, paused = false) => this.onStatus({ seat: 'demo', data: { ...D }, asleep, verifierDown, paused, at: new Date(), live: false });
-    const kind = (k, label) => ({ type: 'work', kind: k, label });
+    const work = (category, label) => ({ type: 'work', category, label });
     const plan = [
       [0, () => { this.onEvent({ type: 'init', seat: 'demo', data: D, asleep: false, working: false, accepted: D.accepted, verifierDown: false, letter: true }); status(); }],
       [14, () => { D.queued = 1; this.onEvent({ type: 'phone' }); status(); }],
-      [22, () => { D.queued = 0; D.working = true; this.onEvent(kind('computer', 'token launch work')); status(); }],
-      [40, () => { D.attempts++; this.onEvent({ type: 'post', n: 1 }); this.onEvent({ type: 'submitted', kind: 'computer', label: 'token launch work', task: { nodeKey: 'build_contract_project' } }); status(); }],
+      [22, () => { D.queued = 0; D.working = true; this.onEvent(work('token', 'token launch work')); status(); }],
+      [40, () => { D.attempts++; this.onEvent({ type: 'post', n: 1 }); this.onEvent({ type: 'submitted', category: 'token', label: 'token launch work', task: { nodeKey: 'build_contract_project' } }); status(); }],
       [52, () => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(); }],
-      [62, () => { this.onEvent({ type: 'workkind', kind: 'cook', label: 'a website' }); status(); }],
-      [76, () => { this.onEvent({ type: 'workkind', kind: 'book', label: 'a research task' }); status(); }],
-      [90, () => { this.onEvent({ type: 'workkind', kind: 'tv', label: 'a video task' }); status(); }],
-      [104, () => { this.onEvent({ type: 'workkind', kind: 'piano', label: 'an audio task' }); status(); }],
-      [118, () => { this.onEvent({ type: 'workkind', kind: 'easel', label: 'an image task' }); status(); }],
-      [132, () => { this.onEvent({ type: 'workkind', kind: 'telescope', label: 'an oracle question' }); status(); }],
+      [62, () => { this.onEvent({ type: 'workkind', category: 'website', label: 'a website' }); status(); }],
+      [76, () => { this.onEvent({ type: 'workkind', category: 'research', label: 'a research task' }); status(); }],
+      [90, () => { this.onEvent({ type: 'workkind', category: 'video', label: 'a video task' }); status(); }],
+      [104, () => { this.onEvent({ type: 'workkind', category: 'audio', label: 'an audio task' }); status(); }],
+      [118, () => { this.onEvent({ type: 'workkind', category: 'image', label: 'an image task' }); status(); }],
+      [132, () => { this.onEvent({ type: 'workkind', category: 'oracle', label: 'an oracle question' }); status(); }],
       [148, () => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }],
       [160, () => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }],
       [174, () => { this.onEvent({ type: 'update', info: { current: '0.1.4+011c9f4c', latest: '0.1.4+1103e27b', behind: 3, latestAgeH: 7, needs: true } }); status(); }],

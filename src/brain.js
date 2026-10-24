@@ -1,14 +1,16 @@
 // What he does: one activity at a time, written as generators that advance one tick (1/30 s) per step.
 // Seat events queue activities by priority; with nothing queued he works, sleeps or follows his routine.
-import { FLOOR_Y, OUT_Y, FLIGHTS, SPOTS, DOOR_X, P } from './world.js';
+import { FLOOR_Y, OUT_Y, FLIGHTS, DOOR_X, P } from './world.js';
 
 const SPEED = 1.1;
 const sec = (s) => Math.round(s * 30);
 const KEEP = ['mail', 'install'];   // what waits for him while he sleeps or is out
 
+// theme: { mapping (task category -> activity, mapping.js), spots (where each thing is, world.js SPOTS shape) }
 export class House {
-  constructor(seed, sound) {
+  constructor(seed, sound, theme) {
     this.sound = sound;
+    this.mapping = theme.mapping; this.spots = theme.spots;
     this.man = { x: 226, floor: 0, y: FLOOR_Y[0], face: 1, pose: 'stand', step: 0, icon: null, carry: null, seat: 10 };
     this.dog = { x: 150, floor: 0, y: FLOOR_Y[0], face: 1, pose: 'sit', step: 0, target: null, wait: 0, mode: null };
     this.carrier = null;
@@ -43,6 +45,15 @@ export class House {
     this.queue = this.queue.filter((q) => KEEP.includes(q.name));
   }
 
+  activityFor(category) { return this.mapping[category] || 'cook'; }
+  get workKind() { return this.activityFor(this.workCategory); }
+
+  // another theme: its mapping and its stations; a station activity starts over at the new place
+  setTheme(theme) {
+    this.mapping = theme.mapping; this.spots = theme.spots;
+    if (this.current && ['work', 'oracle'].includes(this.current.name)) this.current = null;
+  }
+
   leaveNote(why, late) { if (this.onLetterDone) this.onLetterDone(why, late); }
 
   // a verdict: the carrier brings it at once, also at night or while he is out; he reads it when he is up
@@ -55,7 +66,7 @@ export class House {
 
   leave() {
     const m = this.man;
-    m.floor = 'out'; m.x = SPOTS.away.x; m.y = OUT_Y; m.face = -1; m.pose = 'stand'; m.hidden = true;
+    m.floor = 'out'; m.x = this.spots.away.x; m.y = OUT_Y; m.face = -1; m.pose = 'stand'; m.hidden = true;
   }
 
   event(e) {
@@ -63,7 +74,7 @@ export class House {
     switch (e.type) {
       case 'init':
         s.asleep = e.asleep; s.away = !!e.paused; s.sign = s.away; s.working = e.working; s.frames = e.accepted; s.tvStatic = e.verifierDown;
-        this.workKind = e.kind || this.workKind || 'cook';
+        this.workCategory = e.category || this.workCategory || 'other';
         s.needsUpdate = !!(e.update && e.update.needs); s.parcel = s.needsUpdate;
         this.queue = []; this.current = null;
         if (s.away) this.leave();
@@ -72,19 +83,20 @@ export class House {
         if (e.letter && (s.away || e.asleep)) this.leaveNote(s.away ? 'away' : 'bed', false);
         else if (e.letter) this.push(2, 'letter', () => this.writeLetter());
         break;
-      case 'work': s.working = true; this.workKind = e.kind || 'cook'; this.push(3, 'work', () => this.work()); break;
+      case 'work': s.working = true; this.workCategory = e.category || 'other'; this.push(3, 'work', () => this.work()); break;
       case 'workkind': case 'submitted':
-        if (s.working && e.kind && e.kind !== this.workKind) {
-          this.workKind = e.kind;
+        if (!e.category) break;
+        if (s.working && this.activityFor(e.category) !== this.workKind) {
+          this.workCategory = e.category;
           if (this.current && this.current.name === 'work') this.current = null;   // start over with the right activity
-        }
+        } else this.workCategory = e.category;
         break;
       case 'workdone': s.working = false; break;
       case 'post': this.push(4, 'post', () => this.post()); break;
       case 'accepted': case 'rejected': this.letterFor(e.type === 'accepted', e.n); break;
       case 'failed': s.smoke = true; this.push(7, 'smoke', () => this.fan()); break;
       case 'phone': s.phoneRinging = true; this.push(6, 'phone', () => this.answer()); break;
-      case 'oracle': this.push(4, 'oracle', () => this.telescope()); break;
+      case 'oracle': this.push(4, 'oracle', () => this.station(this.activityFor('oracle'), () => false, 18)); break;
       case 'verifier': s.tvStatic = e.down; break;
       case 'update': s.needsUpdate = true; if (!s.parcel && !(this.carrier && this.carrier.kind === 'parcel')) s.parcelDue = true; break;
       case 'updated': this.knockAck = true; this.push(5, 'install', () => this.install()); break;
@@ -146,7 +158,7 @@ export class House {
   }
 
   place(spot, standing) {
-    const s = SPOTS[spot], m = this.man;
+    const s = this.spots[spot], m = this.man;
     m.floor = s.floor; m.x = s.x; m.face = s.face; m.y = s.floor === 'out' ? OUT_Y : FLOOR_Y[s.floor];
     m.pose = standing ? 'stand' : spot === 'desk' ? 'type' : 'stand';
     if (spot === 'desk' && !standing) this.state.action = 'type';
@@ -181,7 +193,7 @@ export class House {
   }
 
   *goTo(name) {
-    const d = SPOTS[name], m = this.man;
+    const d = this.spots[name], m = this.man;
     if (d.floor === 'out') {
       if (m.floor !== 'out' && m.floor !== 0) yield* this.goTo('livingMid');
       yield* this.walkX(d.x);
@@ -209,13 +221,17 @@ export class House {
   }
 
   // ---------- activities for seat events ----------
-  // working on a task: where and how depends on the kind of task
-  *work() {
-    const s = this.state, m = this.man, kind = this.workKind || 'cook';
+  // working on a task: the theme's mapping turns its category into an activity
+  *work() { yield* this.station(this.workKind, () => this.state.working, 15, true); }
+
+  // one activity at its station, while keepGoing() holds and for at least minS seconds; follow: stop when the
+  // seat's task changes to another activity
+  *station(kind, keepGoing, minS, follow = false) {
+    const s = this.state, m = this.man;
     const spot = { computer: 'desk', telescope: 'telescope', book: 'shelf', tv: 'armchair', piano: 'piano', easel: 'easel', cook: 'stove' }[kind] || 'stove';
     yield* this.goTo(spot);
     let i = 0;
-    while (s.working || i < sec(15)) {
+    while (keepGoing() || i < sec(minS)) {
       if (kind === 'computer') { s.action = 'type'; m.pose = 'type'; m.seat = 10; if (i % 5 === 0) this.sound.tick(); }
       else if (kind === 'telescope') { s.action = 'telescope'; m.pose = 'telescope'; m.icon = 'star'; }
       else if (kind === 'book') { s.action = 'research'; m.pose = 'read'; m.book = P.red; }
@@ -226,7 +242,7 @@ export class House {
       if (i > 0 && i % sec(90) === 0 && kind !== 'tv') { m.pose = 'stretch'; for (let k = 0; k < sec(2); k++) yield; }
       i++;
       yield;
-      if (s.asleep || s.away || kind !== this.workKind) break;
+      if (s.asleep || s.away || (follow && kind !== this.workKind)) break;
     }
     s.action = null; m.pose = 'stand'; m.icon = null; m.seat = 10;
   }
@@ -331,11 +347,6 @@ export class House {
     yield* this.act('phone', 'phone', 3, 'bang');
   }
 
-  *telescope() {
-    yield* this.goTo('telescope');
-    yield* this.act('telescope', 'telescope', 18, 'star');
-  }
-
   *sleep() {
     const m = this.man, s = this.state;
     if (m.pose !== 'sleep') { yield* this.goTo('bed'); }
@@ -353,12 +364,12 @@ export class House {
       yield* this.goTo('doorOut');
       yield* this.act('sign', 'reach', 1.2);
       s.sign = true;
-      yield* this.walkX(SPOTS.away.x);
+      yield* this.walkX(this.spots.away.x);
       m.hidden = true;
     }
     while (s.away) yield;
     m.hidden = false;
-    yield* this.walkX(SPOTS.doorOut.x);
+    yield* this.walkX(this.spots.doorOut.x);
     m.face = 1;
     yield* this.act('sign', 'reach', 1);
     s.sign = false;

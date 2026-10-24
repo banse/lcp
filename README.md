@@ -10,6 +10,25 @@ with Activision or Identity.md.
 Status: local test build (2026-10-24). The idea, its evidence and the plan for a swarm-built IPFS site are in
 aidude `ideas/seat-house-life-sim.md`.
 
+## Looks (themes)
+
+Two looks share one house logic (`src/brain.js`), one floor plan (`src/world.js`) and the seat data; each brings its
+own drawing, where its things stand, and its own mapping from task categories to activities (`src/mapping.js`; both
+start with the owner's mapping of 2026-10-24 and can change on their own). The switch sits next to the other controls
+and is remembered per browser.
+
+- **IMD** (default since 2026-10-24, `src/themes/imd.js`): imd.fun's look, black page, the house as an engraved black
+  and white cut-away with green screens (a machine wall in the study, an oscilloscope, a CRT), IBM Plex Mono, the
+  diary as a terminal. The pepe and the dog are imd.fun's sprite sheets (`assets/imd/`, see its `NOTICE.md`: the
+  IMD project's art, not ours) with imd.fun's moves: he looks up, scratches his head, shuffles, turns to the front,
+  cheers; the dog naps (breathing), glances, tilts, wags and walks. He stands with his back to us at the thing he
+  works on, as on imd.fun; in the armchair only his head shows over the back, in bed the back of his head on the
+  pillow. A portrait beside the house shows his face from the front (our own vector drawing, `src/themes/imd-face.js`)
+  with what he wears for what he does: a headset at the machine wall, headphones at the piano, glasses and a pencil
+  for research, a beret at the easel, a chef's hat at the stove, sunglasses for good news, a nightcap asleep. The
+  close-up at the glass uses the same face and a green fist.
+- **Pixel** (parked, `src/themes/pixel.js`): the 480 x 320 pixel house in the original game's look.
+
 ## Run
 
 A browser wallet only injects into http pages, so serve it rather than opening the file:
@@ -40,7 +59,8 @@ A browser wallet only injects into http pages, so serve it rather than opening t
   thuds with sound on). A banner names the seat's worker, the newest one and how to update (`imd update` and a
   restart, or `--auto-update`). "Got it" stops it for 6 h on that version; otherwise he knocks again every 30 min.
   Visitors who don't own the seat see only the parcel. The demo knocks so the scene can be seen.
-- What he does while the seat works depends on the task (owner's mapping, 2026-10-24), first match wins:
+- What he does while the seat works depends on the task. `feed.js` puts it into a category, and each look's mapping
+  (`src/mapping.js`) turns the category into an activity; both mappings are the owner's of 2026-10-24, first match wins:
   oracle step = telescope; research = reads a book at the shelf; video = watches TV; audio/music = piano;
   websites (`build_website`, `frontend_for_contract`, `design_critic`, site) = cooking; token launch work
   (task `launch` is `custom_token`, `univ4_hook` or `evm_project`) = the computer; everything else (other launch

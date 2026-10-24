@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Seat house (local test)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Courier+Prime&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Courier+Prime&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -35,6 +35,10 @@
       <button type="button" id="random-btn" class="quiet">Random busy seat</button>
     </form>
     <div class="toggles">
+      <div class="looks" role="group" aria-label="Look">
+        <button type="button" class="quiet" data-look-btn="imd" aria-pressed="false">IMD</button>
+        <button type="button" class="quiet" data-look-btn="pixel" aria-pressed="false">Pixel</button>
+      </div>
       <button type="button" id="wallet-btn">Connect wallet</button>
       <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog">Legend</button>
       <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
@@ -55,6 +59,10 @@
       <ol id="diary" aria-live="polite"><li class="empty">What he does will show up here.</li></ol>
     </div>
     <div class="side">
+      <figure id="portrait" class="portrait" hidden>
+        <canvas id="portrait-canvas" width="360" height="360" aria-hidden="true"></canvas>
+        <figcaption id="portrait-cap"></figcaption>
+      </figure>
       <div class="counters">
         <h2 id="st-head">The seat</h2>
         <dl>
@@ -75,19 +83,10 @@
 
   <dialog id="legend" class="legend" aria-labelledby="legend-title">
     <form method="dialog" class="legend-head"><h2 id="legend-title">What he does, and why</h2><button type="submit" class="quiet-ink" autofocus>Close</button></form>
-    <p class="small-ink">Everything in the house comes from the seat's public record. While the seat works on a task, the kind of task decides where he goes:</p>
+    <p class="small-ink">Everything in the house comes from the seat's public record. While the seat works on a task, the kind of task decides where he goes (the mapping of the <span id="legend-look"></span> look; each look has its own):</p>
     <table>
       <thead><tr><th scope="col">The seat works on</th><th scope="col">He</th></tr></thead>
-      <tbody>
-        <tr><td>Token launch work: any step of a launch that makes a token (custom token, v4 hook, coin)</td><td>works at the computer in the study</td></tr>
-        <tr><td>Websites: building or reviewing a site or a contract's front end</td><td>cooks at the stove</td></tr>
-        <tr><td>Everything else: contracts-only launches, plain jobs</td><td>cooks at the stove</td></tr>
-        <tr><td>Research reports</td><td>reads a book by the shelf</td></tr>
-        <tr><td>Video</td><td>watches TV in the armchair</td></tr>
-        <tr><td>Audio and music</td><td>plays the piano</td></tr>
-        <tr><td>Images</td><td>paints at the easel in the study</td></tr>
-        <tr><td>Oracle questions, or a seat on an oracle panel</td><td>looks through the telescope</td></tr>
-      </tbody>
+      <tbody id="legend-work"></tbody>
     </table>
     <p class="small-ink">A task shows up in the record only once it is posted. Until then he picks what the seat usually does ("probably" in the diary) and switches if the posted task says otherwise.</p>
     <table>
@@ -114,7 +113,7 @@
   </dialog>
 
   <footer class="foot">
-    <p>Data: <code>api.imd.fun/swarm</code> and <code>/oracle/requests</code>, read every 30 seconds while this tab is open. The wallet is only asked for its address. Local test build; not affiliated with Activision or Identity.md.</p>
+    <p>Data: <code>api.imd.fun/swarm</code> and <code>/oracle/requests</code>, read every 30 seconds while this tab is open. The wallet is only asked for its address. Local test build; not affiliated with Activision or Identity.md. In the IMD look, the pepe and dog sprites are imd.fun's (see <code>assets/imd/NOTICE.md</code>).</p>
   </footer>
 </main>
 <script type="module" src="src/main.js"></script>

@@ -1,19 +1,19 @@
-// Wiring: render loop, seat choice (#/seat/N, #demo), wallet lookup, diary, daily letter and counters.
-import { W, H, drawHouse, drawSky, drawProps, drawLights, skyPhase } from './world.js';
+// Wiring: render loop, looks (themes), seat choice (#/seat/N, #demo), wallet lookup, diary, daily letter, counters.
 import { House } from './brain.js';
-import { drawPerson, drawDog, drawCarrier, drawBubble, drawCloseup, lookFor } from './person.js';
 import { LiveFeed, DemoFeed, isAsleep } from './feed.js';
 import { wallets, connect, seatsOf } from './wallet.js';
 import { Sound } from './sound.js';
+import { CATEGORIES } from './mapping.js';
+import { THEMES, DEFAULT_THEME } from './themes/index.js';
 
 const $ = (id) => document.getElementById(id);
-const canvas = $('game'), g = canvas.getContext('2d');
-const layer = document.createElement('canvas');
-layer.width = W; layer.height = H;
-drawHouse(layer.getContext('2d'));
+const canvas = $('game');
+let g = canvas.getContext('2d');
+const portraitCanvas = $('portrait-canvas'), pg = portraitCanvas.getContext('2d'), PORTRAIT = portraitCanvas.width;
+let theme = THEMES[store('seathouse:theme')] || THEMES[DEFAULT_THEME], lastCaption = null;
 
 const sound = new Sound();
-let house = null, look = null, feed = null, seatId = null, mode = null, tick = 0;
+let house = null, seatSeed = 4242, feed = null, seatId = null, mode = null, tick = 0;
 let pendingLetter = null, wallet = null, lastUpdate = null;
 const ownedSeats = new Set();
 const KNOCK_AGAIN_MS = 30 * 60000, ACK_MS = 6 * 3600000;
@@ -31,29 +31,45 @@ function frame(now) {
 }
 
 function draw() {
-  const phase = skyPhase(new Date());
-  drawSky(g, phase, tick);
-  g.drawImage(layer, 0, 0);
-  if (!house) return;
-  const s = house.state, m = house.man;
-  drawProps(g, s, tick);
-  drawDog(g, house.dog, tick, look.dog);
-  if (!m.hidden && !(s.closeup && s.closeup.k > 0.3)) drawPerson(g, m, tick, look);   // at the glass he is in the close-up
-  drawLights(g, s, phase);
-  if (house.carrier) drawCarrier(g, house.carrier, tick);
-  if (m.icon && !m.hidden) {
-    const hx = m.pose === 'sleep' ? 76 : m.x, hy = m.pose === 'sleep' ? 98 : m.y - (['sit', 'type', 'review', 'piano', 'tvsit', 'sad'].includes(m.pose) ? 32 : 32);
-    drawBubble(g, hx, hy, m.icon, tick);
-  }
-  const c = s.closeup;
-  if (c) drawCloseup(g, c, look, tick);
+  theme.draw(g, house, tick);
+  const c = house && house.state.closeup;
   canvas.style.transform = c && c.hit ? `translate(${tick % 2 ? 2 : -2}px, ${tick % 3 ? 1 : 0}px)` : '';
+  if (theme.portrait && tick % 3 === 0) {
+    const caption = theme.portrait(pg, house, performance.now(), PORTRAIT);
+    if (caption !== lastCaption) { $('portrait-cap').textContent = caption || ''; lastCaption = caption; }
+  }
 }
 
 function fit() {
   const avail = Math.min(document.querySelector('.page').clientWidth, window.innerWidth - 32);
-  const k = Math.min(2, Math.floor(avail / W));
-  canvas.style.width = k >= 1 ? k * W + 'px' : '100%';      // whole-pixel scaling where it fits, else fill the width
+  canvas.style.width = theme.cssWidth(avail);
+}
+
+// ---------- looks: each theme draws the house its own way and has its own mapping ----------
+function applyTheme(id) {
+  theme = THEMES[id] || THEMES[DEFAULT_THEME];
+  store('seathouse:theme', theme.id);
+  document.documentElement.dataset.look = theme.id;
+  theme.attach(canvas);
+  g = canvas.getContext('2d');
+  if (house) { house.setTheme(theme); theme.setSeed(seatSeed); }
+  for (const b of document.querySelectorAll('[data-look-btn]')) b.setAttribute('aria-pressed', String(b.dataset.lookBtn === theme.id));
+  $('portrait').hidden = !theme.portrait;
+  lastCaption = null;
+  renderLegend();
+  fit();
+}
+
+function renderLegend() {
+  const body = $('legend-work');
+  body.innerHTML = '';
+  for (const [cat, label] of Object.entries(CATEGORIES)) {
+    const tr = document.createElement('tr'), a = document.createElement('td'), b = document.createElement('td');
+    a.textContent = label;
+    b.textContent = theme.activityText[theme.mapping[cat]] || theme.mapping[cat];
+    tr.append(a, b); body.append(tr);
+  }
+  $('legend-look').textContent = theme.label;
 }
 window.addEventListener('resize', fit);
 
@@ -69,7 +85,7 @@ function visit(id) {
   if (!Number.isFinite(id)) return;
   demo.stop();
   mode = 'live'; seatId = id;
-  house = new House(id, sound); look = lookFor(id);
+  house = new House(id, sound, theme); seatSeed = id; theme.setSeed(id);
   house.onLetterDone = showLetter;
   house.onKnock = showKnock;
   feed = live; lastUpdate = null; hideKnock();
@@ -85,12 +101,12 @@ function visit(id) {
 function startDemo() {
   live.stop();
   mode = 'demo'; seatId = 'demo';
-  house = new House(4242, sound); look = lookFor(4242);
+  house = new House(4242, sound, theme); seatSeed = 4242; theme.setSeed(4242);
   house.onLetterDone = showLetter;
   house.onKnock = showKnock; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
   setTitle('Demo: a made-up seat, one fast day', null);
-  $('lede').textContent = 'Every event the house knows, in about six minutes: the phone, each kind of work (token launch at the computer, websites and other tasks at the stove, research, video, audio, images, oracles), mail, a failed run, a worker update, the checker going down, sleep with mail at night, and the owner pausing the seat.';
+  $('lede').textContent = 'Every event the house knows, in about six minutes: the phone, each kind of work (token launch, websites, research, video, audio, images, oracles), mail, a failed run, a worker update, the checker going down, sleep with mail at night, and the owner pausing the seat.';
   $('demo-btn').setAttribute('aria-pressed', 'true');
   if (location.hash !== '#demo') history.replaceState(null, '', '#demo');
   demo.start();
@@ -127,7 +143,7 @@ function route() {
 // ---------- events into the house and the diary ----------
 const SAY = {
   work: (e) => workLine(e),
-  workkind: (e) => workLine(e, true),
+  workkind: (e) => workLine(e),
   submitted: (e) => `He posted a result: that was ${e.label}${e.task && e.task.nodeKey ? ' (' + e.task.nodeKey + ')' : ''}.`,
   workdone: () => 'He finished the task and got up.',
   post: (e) => e.n > 1 ? `He posted ${e.n} results in the mailbox.` : 'He posted a result in the mailbox.',
@@ -139,7 +155,7 @@ const SAY = {
     : e.n > 1 ? `${e.n} rejections came in the mail. He sits on his bed for a while.` : 'A rejection came in the mail. He sits on his bed for a while.',
   failed: () => 'His computer started smoking: a run failed.',
   phone: () => 'The phone rings: work is waiting for him.',
-  oracle: () => 'He looks through the telescope: his seat sits on an oracle panel.',
+  oracle: () => `His seat sits on an oracle panel: he ${theme.activityText[theme.mapping.oracle]}.`,
   verifier: (e) => e.down ? 'The TV shows static: the swarm\'s checker is down.' : 'The TV works again: the checker is back.',
   sleep: () => 'Lights out. The seat left the network or has had no task for three days.',
   wake: () => 'He\'s up again: the seat is back.',
@@ -151,13 +167,11 @@ const SAY = {
 const resting = () => !house ? null : house.state.away ? { during: 'was out', after: 'he\'s back' }
   : house.state.asleep ? { during: 'slept', after: 'he\'s up' } : null;
 
-const WORK_SAY = {
-  computer: 'He sits down at the computer', telescope: 'He goes to the telescope', book: 'He takes a book from the shelf',
-  tv: 'He sits down in front of the TV', piano: 'He sits down at the piano', easel: 'He picks up his brush at the easel', cook: 'He starts cooking',
-};
-function workLine(e, change) {
-  const base = (WORK_SAY[e.kind] || 'He starts working') + ': ' + (e.label || 'a task');
-  return base + (e.step ? ' (' + e.step + ')' : '') + (e.guess ? ', probably, going by his recent work.' : '.') + (change ? '' : '');
+// what he does for the task: the theme's mapping and its wording
+function workLine(e) {
+  const act = theme.mapping[e.category] || 'cook';
+  const base = 'He ' + (theme.activityText[act] || 'starts working') + ': ' + (e.label || 'a task');
+  return base + (e.step ? ' (' + e.step + ')' : '') + (e.guess ? ', probably, going by his recent work.' : '.');
 }
 
 function onEvent(e) {
@@ -372,6 +386,7 @@ $('legend-btn').addEventListener('click', () => {
   if (d.showModal) d.showModal(); else d.setAttribute('open', '');
   d.scrollTop = 0;
 });
+for (const b of document.querySelectorAll('[data-look-btn]')) b.addEventListener('click', () => applyTheme(b.dataset.lookBtn));
 $('demo-btn').addEventListener('click', () => (mode === 'demo' ? randomBusySeat() : startDemo()));
 $('sound-btn').addEventListener('click', () => {
   const on = !sound.on; sound.enable(on);
@@ -379,7 +394,7 @@ $('sound-btn').addEventListener('click', () => {
 });
 window.addEventListener('hashchange', route);
 
-fit();
+applyTheme(theme.id);
 route();
 requestAnimationFrame(frame);
 window.__house = () => house;   // for local testing in the console
