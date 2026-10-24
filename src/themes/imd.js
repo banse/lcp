@@ -12,9 +12,14 @@ const C = {
   greenL: '#88d090', red: '#ff6b62', redD: '#b3261e', amber: '#e0a92a', blue: '#9fd3ff',
 };
 const MONO = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
-// by day the page behind the house is the window blue, with an ink sun and light grey clouds (the owner's pick of
-// four previews, 2026-10-24); dawn, dusk and night keep imd.fun's black page
-const DAY = { page: C.blue, line: C.ink, glass: C.blue, cloud: '#e2e2de', sun: C.paper };
+// the page behind the house: by day the window blue with an ink sun and light grey clouds (the owner's pick of four
+// previews, 2026-10-24); at dawn a soft peach with the sun low in the east (left), at dusk an orange with the sun low
+// in the west (right); the windows show the same sky. Night keeps imd.fun's black page.
+const SKY = {
+  day: { page: C.blue, line: C.ink, glass: C.blue, cloud: '#e2e2de', sun: C.paper, sunAt: [30, 30] },
+  dawn: { page: '#f6cdb0', line: C.ink, glass: '#f6cdb0', cloud: '#fdeee3', sun: '#ffe9a8', sunAt: [28, 234] },
+  dusk: { page: '#e89a6c', line: C.ink, glass: '#e89a6c', cloud: '#f3c3a4', sun: C.amber, sunAt: [461, 168] },
+};
 
 // ---------- small drawing helpers (world units) ----------
 const R = (a, b) => a + Math.random() * (b - a);
@@ -439,7 +444,7 @@ export const imd = {
   draw(g, house, tick) {
     const now = performance.now(), phase = skyPhase(new Date());
     g.setTransform(S, 0, 0, S, 0, 0);
-    const day = phase === 'day' ? DAY : null;
+    const day = SKY[phase] || null;
     g.fillStyle = day ? day.page : C.page; g.fillRect(0, 0, W, H);
     if (day) dots(g, 0, 0, W, 296, 3.2, 0.3, 0.16);
     sky(g, phase, now, day);
@@ -558,9 +563,9 @@ function sun(g, x, y, ink, fill, now) {
 }
 
 function sky(g, phase, now, day) {
-  if (phase === 'day') {
+  if (day) {
     const ink = day.line, fill = day.cloud;
-    sun(g, 30, 30, ink, day.sun, now);
+    sun(g, day.sunAt[0], day.sunAt[1], ink, day.sun, now);
     const drift = (now / 900) % 60;
     cloud(g, 92 + drift * 0.6, 22, 34, ink, fill);
     cloud(g, 372 + drift * 0.4, 18, 42, ink, fill);
