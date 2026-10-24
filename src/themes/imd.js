@@ -398,6 +398,7 @@ function pepeSpec(m, s) {
 function dogSpec(d) {
   if (d.pose === 'walk') return { walk: true };
   if (d.pose === 'wag') return { loop: [['wag', 160], ['wag2', 160]] };
+  if (d.pose === 'party') return { loop: [['wag', 150], ['wag2', 150], ['wag', 150], ['wag2', 150], ['bark', 260], ['sit_bark', 240], ['bow', 420], ['wag', 150], ['wag2', 150]] };
   if (d.pose === 'eat') return { loop: [['bow', 900], ['stand', 300]] };
   if (d.pose === 'sleep') return { base: 'sleep', moves: ['dglance'] };
   return d.mode === 'door' ? { base: 'sit' } : { base: 'head_up', moves: ['dlook', 'dtilt'] };
@@ -452,17 +453,22 @@ export const imd = {
     glass(g, phase, now, day);
     g.drawImage(this.layer, 0, 0, W, H);
     if (!house) return;
+    if (house.state.bigFireworks > 0) bigFireworks(g, now, day);
     const s = house.state, m = house.man;
     props(g, s, now, tick);
+    if (this.flags && this.flags.machineTicker && s.working && s.machine && !s.asleep && !s.away) machineReadout(g, s.machine, THINGS.machine, now);
     if (this.ready) {
       drawDog(g, this, house.dog, now);
       if (!m.hidden && !(s.closeup && s.closeup.k > 0.3)) drawPepe(g, this, m, s, now);
     }
     if (house.carrier) drawCarrier(g, house.carrier);
     lights(g, s, phase);
-    if (m.icon && !m.hidden) {
+    // at his station the bubble shows the model's namesake; with an icon of the activity too, the two take turns
+    const work = workInfo(s), sym = work && s.atStation ? MODEL_SYMBOL[work.family] : null;
+    const icon = m.icon && sym ? (Math.floor(now / 3000) % 2 ? sym : m.icon) : m.icon || sym;
+    if (icon && !m.hidden) {
       const head = m.pose === 'sleep' ? [76, 97] : ['tvsit', 'nap'].includes(m.pose) ? [THINGS.chair.x + 13, THINGS.chair.y - 14] : [m.x, m.y - PH + 2];
-      bubble(g, head[0], head[1], m.icon, now);
+      bubble(g, head[0], head[1], icon, now);
     }
     if (s.closeup) closeup(g, this, s.closeup, now);
   },
@@ -516,7 +522,7 @@ function drawDog(g, th, d, now) {
   if (!img) return;
   const spec = dogSpec(d);
   const name = spec.walk ? DWALK[Math.floor(d.step / 6) % 4] : th.dm.frame(d.pose + '|' + d.mode, spec, now);
-  const flip = d.face < 0 && (spec.walk || ['wag', 'eat'].includes(d.pose));
+  const flip = d.face < 0 && (spec.walk || ['wag', 'eat', 'party'].includes(d.pose));
   g.save();
   g.beginPath(); g.ellipse(d.x, d.y + 0.4, DWD * 0.32, 1.6, 0, 0, Math.PI * 2);
   g.fillStyle = 'rgba(0,0,0,0.22)'; g.fill();
@@ -672,6 +678,7 @@ function props(g, s, now, tick) {
     g.fillRect(tx + 2 + ((now / 90) % (tw - 8)), ty + thh - 8, 6, 5); g.fillRect(tx + 3, ty + 3, tw - 6, 1.2);
     disc(g, tx + tw * 0.7, ty + 6, 2.4 + Math.sin(now / 300), C.greenL, 0); g.globalAlpha = 1;
   } else { box(g, tx, ty, tw, thh, C.glass, 0); ln(g, tx + 3, ty + thh - 3, tx + 9, ty + 3, 0.7, 'rgba(255,255,255,0.25)'); }
+  const work = workInfo(s);
   // fire and chimney smoke while he is home and awake
   if (!s.asleep && !s.away) {
     const f = THINGS.fire;
@@ -680,8 +687,28 @@ function props(g, s, now, tick) {
       g.beginPath(); g.moveTo(x - 2.6, f.y + f.h); g.quadraticCurveTo(x - 2, f.y + f.h - hgt * 0.6, x, f.y + f.h - hgt); g.quadraticCurveTo(x + 2, f.y + f.h - hgt * 0.6, x + 2.6, f.y + f.h); g.closePath();
       g.fillStyle = i % 2 ? C.amber : C.red; g.fill();
     }
-    for (let i = 0; i < 4; i++) { const k = (now / 60 + i * 25) % 100; g.globalAlpha = Math.max(0, 0.7 - k / 140); disc(g, 326 + Math.sin(k / 12 + i) * 3, 2 - k * 0.5 + 6, 2 + k / 25, C.greyL, 0); }
+    // the chimney: a few light puffs; with premium work it follows the effort, from a thin wisp (minimal) to fast, thick,
+    // darker billows (max, ultra)
+    const lvl = work && work.level >= 0 ? work.level : -1;
+    const n = lvl < 0 ? 4 : 2 + lvl * 2, grow = lvl < 0 ? 1 : 0.6 + lvl * 0.32, speed = lvl < 0 ? 1 : 1 + lvl * 0.18;
+    const puff = lvl >= 5 ? C.grey : lvl >= 3 ? C.greyL : lvl >= 0 ? C.paper2 : C.greyL;
+    // the chimney top is at the picture's top edge, so the effort smoke drifts right with the wind, over the open sky
+    // above the roof, where it can be seen growing; the usual puffs rise as before
+    for (let i = 0; i < n; i++) {
+      const k = (now / 60 * speed + i * (100 / n)) % 100;
+      g.globalAlpha = Math.max(0, 0.7 - k / 140);
+      const x = lvl < 0 ? 326 + Math.sin(k / 12 + i) * 3 : 326 + k * 1.25 + Math.sin(k / 9 + i) * 2;
+      const y = lvl < 0 ? 8 - k * 0.5 : 9 - k * 0.07 + Math.sin(k / 7 + i * 2) * 1.2;
+      disc(g, x, y, (2 + k / 25) * grow, puff, 0);
+    }
     g.globalAlpha = 1;
+  }
+  // the attic window: lit while he does premium work, in the provider's colour
+  if (work && work.premium) {
+    const col = PROVIDER_LIGHT[work.runtime] || C.paper;
+    g.globalAlpha = 0.28 + 0.06 * Math.sin(now / 700); disc(g, 250, 31, 10, col, 0); g.globalAlpha = 1;
+    disc(g, 250, 31, 5.5, col, 0.5);
+    ln(g, 250, 25.5, 250, 36.5, 0.7, C.ink); ln(g, 244.5, 31, 255.5, 31, 0.7, C.ink);
   }
   // phone
   const shake = s.phoneRinging && (tick >> 1) % 2 ? 0.8 : 0;
@@ -800,8 +827,64 @@ function fireworks(g, now) {
   }
 }
 
+// While he works: a green ticker along the machine wall's top edge, under the ceiling (provider · model · effort), and
+// the big dial's needle on the effort over its seven marks (feed.js EFFORTS), with a green arc up to it; when the effort
+// is not known (the step does not run the seat's premium model) the needle rests and a '?' sits on the dial.
+function machineReadout(g, info, m, now) {
+  const x = m.x, y = 132.6, w = m.w, h = 8.6;
+  box(g, x, y, w, h, C.glass, 0.6);
+  const msg = `${info.provider} · ${info.model || 'MODEL ?'} · ${info.effort ? info.effort.toUpperCase() : 'EFFORT ?'}   ·   `;
+  g.save();
+  g.beginPath(); g.rect(x + 1, y + 0.6, w - 2, h - 1.2); g.clip();
+  g.font = `600 5.8px ${MONO}`;
+  const tw = g.measureText(msg).width, off = (now / 1000 * 15) % tw;
+  for (let k = 0; k < 3; k++) text(g, msg, x + 2 - off + k * tw, y + 6.4, 5.8, C.green, 600, 'left');
+  g.fillStyle = 'rgba(4,8,4,0.45)';                                   // the dot matrix: dark gaps between the LEDs
+  for (let i = x + 1; i < x + w - 1; i += 1.15) g.fillRect(i, y + 0.6, 0.3, h - 1.2);
+  for (let j = y + 1.2; j < y + h - 0.6; j += 1.15) g.fillRect(x + 1, j, w - 2, 0.3);
+  g.restore();
+  const cx = m.x + 7.5, cy = m.y + 25, start = Math.PI * 0.85;
+  disc(g, cx, cy, 4.5, C.paper, 0.6);
+  for (let a = 0; a < 7; a++) { const t = start + a * Math.PI * 0.22; ln(g, cx + Math.cos(t) * 3.6, cy + Math.sin(t) * 3.6, cx + Math.cos(t) * 4.3, cy + Math.sin(t) * 4.3, 0.3); }
+  if (info.level >= 0) {
+    const t = start + info.level * Math.PI * 0.22;
+    g.beginPath(); g.arc(cx, cy, 2.9, start, t); g.lineWidth = 1.2; g.strokeStyle = C.green; g.stroke();
+    ln(g, cx, cy, cx + Math.cos(t) * 3.7, cy + Math.sin(t) * 3.7, 0.6, C.ink);
+  } else {
+    ln(g, cx, cy, cx, cy + 3.4, 0.6, C.ink);
+    text(g, '?', cx, cy - 0.6, 4.6, C.greenD, 600, 'center');
+  }
+  disc(g, cx, cy, 0.7, C.ink, 0);
+}
+
+// the job the page followed is done: big bursts all over the sky, the roof too, each after its rocket's climb; deeper
+// colours by day, where the sky is the window blue
+function bigFireworks(g, now, day) {
+  const cols = day ? [C.redD, C.amber, C.greenD, '#6a3df0', C.red] : [C.amber, C.red, C.green, C.blue, C.paper];
+  for (let k = 0; k < 11; k++) {
+    const t = now / (1500 + k * 70) + k * 0.31, n = Math.floor(t), f = t - n, rnd = seeded(n * 13 + k * 211);
+    const x = 18 + rnd() * 444, y = 8 + rnd() * 38, col = cols[Math.floor(rnd() * cols.length)], col2 = cols[Math.floor(rnd() * cols.length)];
+    if (f < 0.2) {                                    // the rocket climbs
+      const e = f / 0.2, y0 = y + 50, at = (v) => y0 - (y0 - y) * v;
+      ln(g, x, at(Math.max(0, e - 0.35)), x, at(e), 1.3, col);
+      disc(g, x, at(e), 1.1, col, 0);
+      continue;
+    }
+    const e = (f - 0.2) / 0.8, r = 7 + (1 - (1 - e) * (1 - e)) * 44, drop = e * e * 11;
+    g.save(); g.globalAlpha = Math.min(1, 1.25 - e * e * 1.25);
+    for (let a = 0; a < 28; a++) {
+      const th = a * Math.PI / 14 + k, cx = Math.cos(th), cy = Math.sin(th);
+      ln(g, x + cx * r * 0.58, y + cy * r * 0.58 + drop, x + cx * r, y + cy * r + drop, 1.8, col);
+      disc(g, x + cx * (r + 2.4), y + cy * (r + 2.4) + drop * 1.3, 1.1, col, 0);
+      if (a % 2 === 0) disc(g, x + cx * r * 0.38, y + cy * r * 0.38 + drop, 0.9, col2, 0);
+    }
+    if (e < 0.12) disc(g, x, y, 5 * (1 - e / 0.12) + 1.2, C.paper, 0);   // the flash
+    g.restore();
+  }
+}
+
 function lights(g, s, phase) {
-  if (!s.asleep && !s.away) return;
+  if ((!s.asleep && !s.away) || s.party) return;        // a party keeps the lights on
   g.fillStyle = phase === 'night' || phase === 'dusk' ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0.38)';
   g.fillRect(56, 48, 388, 242);
 }
@@ -817,11 +900,39 @@ function bubble(g, x, y, icon, now) {
   } else if (icon === 'star') {
     g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 1.5 : 3.6, t = -Math.PI / 2 + i * Math.PI / 5; g.lineTo(cx + Math.cos(t) * r, cy + 0.4 + Math.sin(t) * r); }
     g.closePath(); g.fillStyle = C.amber; g.fill(); g.lineWidth = 0.35; g.stroke();
+  } else if (icon === 'quill') {                                   // Sonnet
+    g.beginPath(); g.moveTo(cx - 3, cy + 3.6); g.quadraticCurveTo(cx - 2.4, cy - 2.4, cx + 3.4, cy - 3.8);
+    g.quadraticCurveTo(cx + 1.4, cy + 0.8, cx - 3, cy + 3.6); g.fillStyle = C.paper2; g.fill(); g.lineWidth = 0.45; g.strokeStyle = C.ink; g.stroke();
+    ln(g, cx - 3.6, cy + 4.3, cx + 1.8, cy - 1.9, 0.45);
+  } else if (icon === 'leaf') {                                    // Haiku
+    g.save(); g.translate(cx, cy + 0.3); g.rotate(-0.6);
+    g.beginPath(); g.ellipse(0, 0, 3.9, 2.1, 0, 0, Math.PI * 2); g.fillStyle = C.green; g.fill(); g.lineWidth = 0.4; g.strokeStyle = C.ink; g.stroke();
+    ln(g, -4.4, 0, 3.4, 0, 0.35); g.restore();
+  } else if (icon === 'book') {                                    // Fable
+    g.beginPath(); g.moveTo(cx, cy - 1.8); g.quadraticCurveTo(cx - 2.2, cy - 3, cx - 4.2, cy - 2.2); g.lineTo(cx - 4.2, cy + 2.8);
+    g.quadraticCurveTo(cx - 2.2, cy + 2, cx, cy + 3.2); g.quadraticCurveTo(cx + 2.2, cy + 2, cx + 4.2, cy + 2.8); g.lineTo(cx + 4.2, cy - 2.2);
+    g.quadraticCurveTo(cx + 2.2, cy - 3, cx, cy - 1.8); g.closePath(); g.fillStyle = C.paper; g.fill(); g.lineWidth = 0.45; g.strokeStyle = C.ink; g.stroke();
+    ln(g, cx, cy - 1.8, cx, cy + 3.2, 0.4);
+    for (const d of [-0.4, 0.8, 2]) { ln(g, cx - 3.3, cy + d - 0.6, cx - 0.9, cy + d - 0.2, 0.25); ln(g, cx + 0.9, cy + d - 0.2, cx + 3.3, cy + d - 0.6, 0.25); }
+  } else if (icon === 'sun') {                                     // Sol
+    for (let i = 0; i < 8; i++) { const t = i * Math.PI / 4; ln(g, cx + Math.cos(t) * 2.7, cy + Math.sin(t) * 2.7, cx + Math.cos(t) * 4, cy + Math.sin(t) * 4, 0.55, C.ink); }
+    disc(g, cx, cy, 2.1, C.amber, 0.45);
+  } else if (icon === 'moon') {                                    // Luna
+    disc(g, cx - 0.4, cy + 0.2, 3.3, C.greyL, 0.45); disc(g, cx + 1.4, cy - 0.9, 2.8, C.paper, 0);
   } else {
     const glyph = { note: '♪', z: 'z', ask: '?', bang: '!', dots: '…' }[icon] || '';
     text(g, glyph, cx, cy + 2.6, icon === 'note' ? 7.2 : 7, C.ink, 600, 'center');
   }
 }
+
+// the step he works on now, as feed.js machineInfo reads it (provider, model, family, premium, effort), while he is
+// home and awake; null otherwise
+function workInfo(s) { return s.working && s.machine && !s.asleep && !s.away ? s.machine : null; }
+// each model shows as its namesake in his bubble (Opus a piece of music, Sonnet a quill, Haiku a leaf, Fable a book;
+// Astra a star, Sol the sun, Luna the moon); another family shows none
+const MODEL_SYMBOL = { opus: 'note', sonnet: 'quill', haiku: 'leaf', fable: 'book', astra: 'star', sol: 'sun', luna: 'moon' };
+// the attic light's colour for premium work: warm amber for Claude Code, cool white-green for Codex
+const PROVIDER_LIGHT = { claude: '#f0b43c', codex: '#d4f5cf' };
 
 // at the glass: his sprite from the front, big, pressed to the screen; each knock bumps him towards you
 function closeup(g, th, c, now) {

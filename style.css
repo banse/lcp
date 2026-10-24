@@ -50,6 +50,10 @@ h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; }
 
 .controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; }
 .seat-form, .toggles { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* the side-by-side page's buttons (Random active job, Show on / Hide explorer) at the row's right end */
+.seat-form { flex: 1 1 auto; }
+.split-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.split-actions:not(:has(button:not([hidden]))) { display: none; }
 label { color: var(--muted); }
 input[type=number] {
   width: 7.5rem; font: inherit; color: var(--paper-ink); background: var(--paper);
@@ -135,8 +139,32 @@ html[data-look="imd"] {
   --paper-ink: #0b0b0b;
   --term: #040404;
   --term-edge: #18301c;
+  --on-ink: #000000;          /* text on an ink-filled control */
+  --hover-bg: #141414;
+  --field: #000000;
+  --brand-hover: #e6e6e6;
   --pixel: "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --type: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+/* The IMD look in light mode (2026-10-24), like explorer.imd.fun's light mode: the side-by-side page sends the
+   explorer's mode (main.js, setMode). Only the page around the house changes; the house keeps its own sky. */
+html[data-look="imd"][data-mode="light"] {
+  --night: #ffffff;
+  --night-2: #f4f4f2;
+  --ink: #0b0b0b;
+  --muted: #5c5c58;
+  --lamp: #1f9d55;            /* the green, darker so it reads on white */
+  --wood: #0b0b0b;
+  --wood-l: #9a9a96;
+  --paper: #f4f4f2;
+  --paper-ink: #0b0b0b;
+  --term: #f7f7f5;
+  --term-edge: #cfe3d2;
+  --on-ink: #ffffff;
+  --hover-bg: #ececea;
+  --field: #ffffff;
+  --brand-hover: #2c2c2a;
+  color-scheme: light;
 }
 html[data-look="imd"] body { font-size: 14px; line-height: 1.55; }
 html[data-look="imd"] h1 { font-size: clamp(1.35rem, 3vw, 1.9rem); letter-spacing: 0.01em; }
@@ -147,15 +175,33 @@ html[data-look="imd"] button {
   font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; padding: 8px 14px;
 }
 html[data-look="imd"] button.quiet { border-color: var(--wood-l); }
-html[data-look="imd"] button[aria-pressed=true] { background: var(--ink); color: #000; border-color: var(--ink); }
-html[data-look="imd"] button:hover { filter: none; background: #141414; }
+html[data-look="imd"] button[aria-pressed=true] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+html[data-look="imd"] button:hover { filter: none; background: var(--hover-bg); }
 html[data-look="imd"] button[aria-pressed=true]:hover { background: var(--ink); }
 html[data-look="imd"] button:focus-visible, html[data-look="imd"] input:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
-html[data-look="imd"] input[type=number] { background: #000; color: var(--ink); border: 1.5px solid var(--ink); border-radius: 0; }
+html[data-look="imd"] input[type=number] { background: var(--field); color: var(--ink); border: 1.5px solid var(--ink); border-radius: 0; }
 html[data-look="imd"] .door { background: transparent; color: var(--ink); }
-html[data-look="imd"] .brand { background: var(--ink); color: #000; border: 1.5px solid var(--ink); font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; padding: 10px 16px; }
-html[data-look="imd"] .brand:hover { color: #000; background: #e6e6e6; }
-html[data-look="imd"] .topbar { padding-bottom: 18px; border-bottom: 1px solid #141414; }
+html[data-look="imd"] .brand { background: var(--ink); color: var(--on-ink); border: 1.5px solid var(--ink); font-size: 13px; letter-spacing: 0.3em; text-transform: uppercase; }
+html[data-look="imd"] .brand:hover { color: var(--on-ink); background: var(--brand-hover); }
+/* The top bar sized and placed like explorer.imd.fun's (measured 2026-10-24), so the two line up side by side: 16px
+   from the top (12px up to 640px wide), the side gutter clamp(16px, 4vw, 34px), 40px controls with 1.5px rules,
+   12px labels at weight 500 and 0.06em, the name at 13px/600/0.3em, the next row 82px from the top (80px narrow). */
+html[data-look="imd"] body {
+  padding-top: 16px;
+  padding-left: max(clamp(16px, 4vw, 34px), env(safe-area-inset-left, 0px));
+  padding-right: max(clamp(16px, 4vw, 34px), env(safe-area-inset-right, 0px));
+}
+html[data-look="imd"] .topbar { gap: 8px 12px; margin-bottom: 26px; }
+html[data-look="imd"] .topbar .toggles { gap: 12px; }
+html[data-look="imd"] .brand, html[data-look="imd"] .topbar button { display: inline-flex; align-items: center; height: 40px; }
+html[data-look="imd"] .brand { padding: 0 calc(16px - 0.3em) 0 16px; }
+html[data-look="imd"] .topbar button { padding: 0 14px; font-size: 12px; font-weight: 500; letter-spacing: 0.06em; }
+@media (max-width: 640px) {
+  html[data-look="imd"] body { padding-top: 12px; }
+  html[data-look="imd"] .topbar { gap: 10px; margin-bottom: 28px; }
+  html[data-look="imd"] .topbar .toggles { gap: 10px; }
+  html[data-look="imd"] .topbar button { padding: 0 12px; font-size: 10.5px; }
+}
 html[data-look="imd"] .diary { background: var(--term); border: 1.5px solid var(--term-edge); padding: 12px 14px; }
 html[data-look="imd"] .diary ol { font-size: 12.5px; }
 html[data-look="imd"] .diary li { grid-template-columns: 1rem 3.4rem 1fr; }

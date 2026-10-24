@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Little Computer Pepes</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Courier+Prime&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Courier+Prime&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="data:,">
 </head>
@@ -56,6 +56,10 @@
       <input id="seat-input" type="number" min="0" max="1999" inputmode="numeric" placeholder="0–1999">
       <button type="submit">Visit</button>
       <button type="button" id="random-btn" class="quiet">Random busy seat</button>
+      <span class="split-actions">
+        <button type="button" id="random-job-btn" class="quiet" hidden>Random active job</button>
+        <button type="button" id="explorer-btn" class="quiet" hidden>Show on IMD Explorer</button>
+      </span>
     </form>
     <div id="wallet-panel" class="wallet" hidden aria-live="polite">
       <p id="wallet-note"></p>
@@ -112,6 +116,11 @@
         <tr><td>He cheers</td><td>a job he worked on is done</td></tr>
         <tr><td>He scratches his head</td><td>a job he worked on is blocked</td></tr>
         <tr><td>Fireworks over the roof</td><td>a launch he worked on went live</td></tr>
+        <tr><td>Big fireworks, and he dances in the kitchen with his dog</td><td>the job the page follows (#/job/…) is done</td></tr>
+        <tr><td>The attic window lit: amber or white-green</td><td>while he works on the seat's premium model; amber for Claude Code, white-green for Codex (read through the local relay)</td></tr>
+        <tr><td>More chimney smoke</td><td>the effort of that premium work: a thin wisp at minimal or low, thick fast billows at max or ultra; other tiers publish no effort and keep the usual puffs</td></tr>
+        <tr><td>A symbol in his bubble while he works</td><td>the model, by its name: a note for Opus, a quill for Sonnet, a leaf for Haiku, a book for Fable, a star for Astra, the sun for Sol, the moon for Luna</td></tr>
+        <tr data-feature="machineTicker"><td>A green ticker on top of the machine wall, and its big dial</td><td>while the seat works: the provider (Claude Code or Codex), the model of the step it runs and its effort on the dial, low to high; "?" when the effort is not published for that model's tier (read through the local relay)</td></tr>
         <tr><td>The clock on the mantel rings</td><td>a schedule opened the job or question he starts</td></tr>
         <tr><td>He knocks on the glass</td><td>shown only to the seat's owner: the worker needs an update</td></tr>
         <tr><td>He types you a letter</td><td>once a day: what the seat did since your last visit; if he's asleep or out, he left it as a note</td></tr>

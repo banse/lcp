@@ -1,6 +1,7 @@
-// Wiring: render loop, looks (themes), seat choice (#/seat/N, #demo), wallet lookup, diary, daily letter, counters.
+// Wiring: render loop, looks (themes), seat choice (#/seat/N, #demo), following a job (#/job/<id>), wallet lookup,
+// diary, daily letter, counters.
 import { House } from './brain.js';
-import { LiveFeed, DemoFeed, isAsleep } from './feed.js';
+import { LiveFeed, DemoFeed, JobFollower, isAsleep } from './feed.js';
 import { wallets, connect, seatsOf } from './wallet.js';
 import { Sound } from './sound.js';
 import { CATEGORIES } from './mapping.js';
@@ -10,8 +11,26 @@ import { setPhase } from './world.js';
 const $ = (id) => document.getElementById(id);
 // built but switched off (the owner, 2026-10-24: "dont delete the cut features, we may add it back later"): the look
 // switch (IMD | LCP) and the wallet lookup. Elements marked data-feature="…" show only when theirs is on.
-const FEATURES = { lookSwitch: false, wallet: false };
+// machineTicker: the green ticker and the effort dial on the machine wall (owner, 2026-10-24: reverted, other ways to
+// show provider, model and effort wanted); the data behind it (LiveFeed.checkMachine) still runs.
+const FEATURES = { lookSwitch: false, wallet: false, machineTicker: false };
 for (const el of document.querySelectorAll('[data-feature]')) el.hidden = !FEATURES[el.dataset.feature];
+
+// light or dark page around the house (IMD look): the side-by-side page sends the explorer's mode as
+// {type: 'lcp:mode', mode}; kept for this tab, so a reload of the frame starts in it. Dark when nothing says.
+function setMode(m) {
+  if (m !== 'light' && m !== 'dark') return;
+  document.documentElement.dataset.mode = m;
+  try { sessionStorage.setItem('lcp:mode', m); } catch (e) { /* no storage */ }
+}
+try { setMode(sessionStorage.getItem('lcp:mode')); } catch (e) { /* no storage */ }
+window.addEventListener('message', (e) => {
+  if (!e.data) return;
+  if (e.data.type === 'lcp:mode') setMode(e.data.mode);
+  if (e.data.type === 'lcp:split' && e.source === window.parent && window.parent !== window) {
+    inSplit = !!e.data.on; activeJobs = Number(e.data.activeJobs) || 0; explorerButton();
+  }
+});
 const canvas = $('game');
 let g = canvas.getContext('2d');
 let theme = (FEATURES.lookSwitch && THEMES[store('seathouse:theme')]) || THEMES[DEFAULT_THEME];
@@ -24,6 +43,8 @@ const KNOCK_AGAIN_MS = 30 * 60000, ACK_MS = 6 * 3600000;
 
 const live = new LiveFeed(onEvent, onStatus);
 const demo = new DemoFeed(onEvent, onStatus, () => house);
+const follower = new JobFollower(onFollow);
+let followed = null;                 // the job followed now: {id, job}
 
 // ---------- render loop: logic at 30 ticks a second ----------
 let last = performance.now(), acc = 0;
@@ -49,6 +70,7 @@ function fit() {
 // ---------- looks: each theme draws the house its own way and has its own mapping ----------
 function applyTheme(id) {
   theme = THEMES[id] || THEMES[DEFAULT_THEME];
+  theme.flags = FEATURES;
   store('seathouse:theme', theme.id);
   document.documentElement.dataset.look = theme.id;
   theme.attach(canvas);
@@ -79,25 +101,84 @@ function setTitle(text, num) {
   if (num != null) { const b = document.createElement('span'); b.className = 'num'; b.textContent = '#' + num; h.append(b, '?'); }
 }
 
-function visit(id) {
+// job: the seat is shown because it works on the followed job; the diary goes on and the address stays #/job/<id>
+function visit(id, job = false) {
   id = Math.max(0, Math.min(1999, Math.floor(Number(id))));
   if (!Number.isFinite(id)) return;
+  if (!job) stopFollowing();
   demo.stop(); setPhase(null);
   mode = 'live'; seatId = id;
   house = new House(id, sound, theme); seatSeed = id; theme.setSeed(id);
   house.onLetterDone = showLetter;
   house.onKnock = showKnock;
   feed = live; lastUpdate = null; hideKnock();
-  clearDiary(); hideLetter();
+  if (!job) clearDiary();
+  hideLetter(); machineSaid = '';
   setTitle('Who lives in Swarmstreet ', id);
-  $('lede').textContent = 'A little pepe lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.';
+  $('lede').textContent = job && followed ? followLede() : 'A little pepe lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.';
   $('seat-input').value = id;
   $('demo-btn').setAttribute('aria-pressed', 'false');
-  if (location.hash !== '#/seat/' + id) history.replaceState(null, '', '#/seat/' + id);
+  if (!job && location.hash !== '#/seat/' + id) history.replaceState(null, '', '#/seat/' + id);
   live.setSeat(id);
+  explorerButton();
+}
+
+// ---------- following a job: the house of the seat working on it, then of the seat on its next step ----------
+// step: #/job/<id>/step/<key>, a step the visitor chose (the side-by-side page sends it when a step row of the job opens
+// in the explorer); the address goes back to #/job/<id>, so choosing it again is a new address change
+function followJob(id, step = null) {
+  if (location.hash !== '#/job/' + id) history.replaceState(null, '', '#/job/' + id);
+  if (followed && followed.id === id) { if (step) follower.prefer(step); return; }
+  followed = { id, job: null };
+  clearDiary();
+  addDiary(`Looking up job ${id.slice(0, 8)}…`);
+  $('lede').textContent = followLede();
+  follower.start(id, step);
+}
+
+function stopFollowing() { follower.stop(); followed = null; }
+
+function jobName(job) {
+  const o = (job && job.objective || '').replace(/\s+/g, ' ').trim();
+  return o ? `"${o.length > 70 ? o.slice(0, 69) + '…' : o}"` : 'job ' + followed.id.slice(0, 8);
+}
+
+function followLede() {
+  const j = followed && followed.job;
+  return `Following job ${followed.id.slice(0, 8)}${j && j.objective ? ': ' + jobName(j) : ''}. The house is the seat working on it now, and moves to the seat on its next step.`;
+}
+
+function onFollow(e) {
+  if (!followed || e.jobId !== followed.id) return;
+  if (e.job) followed.job = e.job;
+  const name = jobName(followed.job), st = e.step;
+  if (e.type === 'error') {
+    if (e.first) addDiary(`Can't read job ${followed.id.slice(0, 8)} (${e.error}). Following a job needs the local server's relay. Retrying.`);
+    return;
+  }
+  if (e.type === 'start') {
+    if (st && st.seat !== seatId) visit(st.seat, true);
+    $('lede').textContent = followLede();
+    addDiary(!st ? `Following ${name}. No seat has started on it yet; the house moves when one does.`
+      : e.running ? `Following ${name}. Seat #${st.seat} works on its step ${st.key}${e.count > 1 ? `, the longest of the ${e.count} seats on it now` : ''}.`
+        : `Following ${name}. No seat works on it right now; this is seat #${st.seat}, the last one that did (${st.key}). The house moves when a seat starts its next step.`);
+  } else if (e.type === 'step') {
+    addDiary(e.picked ? `You chose ${st.key}: seat #${st.seat} works on it now${st.seat === seatId ? '.' : ', and the house moves there.'}`
+      : `${e.from ? e.from.key + ' is done. ' : ''}Seat #${st.seat} started ${st.key}${st.seat === seatId ? ': the same seat goes on.' : ': the house moves there.'}`);
+    if (st.seat !== seatId) visit(st.seat, true);
+  } else if (e.type === 'waiting') {
+    addDiary(`${e.from.key} is done. Waiting for a seat to start the next step of ${name}.`);
+  } else if (e.type === 'ended') {
+    if (st && (e.first ? st.seat !== seatId : !house)) visit(st.seat, true);
+    const reason = e.job.blockedReason ? ` (${String(e.job.blockedReason).slice(0, 100)})` : '';
+    if (e.first) addDiary(`${name} is already ${e.state}${reason}.${st ? ` This is seat #${st.seat}, the last one that worked on it.` : ''}`);
+    else if (e.state === 'completed') { addDiary(`${name} is done! Fireworks over Swarmstreet, and he dances in the kitchen with his dog.`); if (house) house.event({ type: 'celebrate' }); }
+    else { addDiary(`${name} is ${e.state}${reason}. He scratches his head.`); if (house) house.event({ type: 'jobdone', state: 'blocked' }); }
+  }
 }
 
 function startDemo() {
+  stopFollowing();
   live.stop();
   mode = 'demo'; seatId = 'demo';
   house = new House(4242, sound, theme); seatSeed = 4242; theme.setSeed(4242);
@@ -109,6 +190,7 @@ function startDemo() {
   $('demo-btn').setAttribute('aria-pressed', 'true');
   if (location.hash !== '#demo') history.replaceState(null, '', '#demo');
   demo.start();
+  explorerButton();
 }
 
 // a seat working right now; if none is, one that finished a task in the last hour, else in the last 24 hours
@@ -134,7 +216,9 @@ async function randomBusySeat() {
 function route() {
   const h = location.hash;
   const m = h.match(/^#\/seat\/(\d{1,4})$/);
+  const j = h.match(/^#\/job\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/step\/([^/]{1,200}))?$/);
   if (m) visit(m[1]);
+  else if (j) { let step = null; try { step = j[2] ? decodeURIComponent(j[2]) : null; } catch (e) { /* not a step key */ } followJob(j[1], step); }
   else if (h === '#demo') startDemo();
   else randomBusySeat();
 }
@@ -165,7 +249,22 @@ const SAY = {
   launched: (e) => `A launch he worked on went live (${e.kind}): fireworks over the roof.`,
   alarm: () => 'His alarm clock rings: a schedule opened this one.',
   resume: () => 'The seat is on again. He came home and took the sign down.',
+  machine: (e) => machineLine(e.info),
 };
+
+// what he works with, in words, once per model (the house shows it as the attic light, the chimney smoke and the
+// symbol in his bubble): null when there is nothing new to say
+let machineSaid = '';
+function machineLine(m) {
+  const key = m && m.modelId ? m.modelId + '|' + (m.effort || '') : '';
+  if (!key || key === machineSaid) { if (!key) machineSaid = ''; return null; }
+  machineSaid = key;
+  const rt = { claude: 'Claude Code', codex: 'Codex' }[m.runtime] || m.runtime;
+  if (FEATURES.machineTicker) return `His machine runs ${m.modelId} on ${rt}, ${m.effort ? 'effort ' + m.effort : 'effort not shown for this tier'}.`;
+  return m.premium
+    ? `He works with ${m.modelId} on ${rt}, the seat's premium model${m.effort ? ', effort ' + m.effort : ''}: the attic light is on.`
+    : `He works with ${m.modelId} on ${rt}, not the seat's premium model, so its effort isn't published.`;
+}
 const resting = () => !house ? null : house.state.away ? { during: 'was out', after: 'he\'s back' }
   : house.state.asleep ? { during: 'slept', after: 'he\'s up' } : null;
 
@@ -179,13 +278,14 @@ function workLine(e) {
 function onEvent(e) {
   if (e.type === 'phase') { setPhase(e.phase); return; }      // the demo's time of day
   if (!house) return;
+  if (followed && e.jobId === followed.id && (e.type === 'jobdone' || e.type === 'launched')) return;   // the follower ends it
   if (e.type === 'init') {
     const st = e.paused ? 'He\'s out: the seat\'s owner paused it. A sign on the door says he\'ll be back soon.' : e.asleep ? 'He\'s asleep: the seat left the network or has had no task for three days.' : e.working ? 'He\'s working on ' + (e.label || 'a task') + (e.guess ? ' (probably, going by his recent work).' : '.') : 'He\'s at home, between tasks.';
     addDiary(mode === 'demo' ? 'The demo starts. ' + st : `You're visiting seat #${e.seat}. ${st}`);
     if (e.update && e.update.needs) addDiary(`A parcel waits at his door: the seat runs ${e.update.current}, and the newest worker is ${e.update.latest}.`);
     if (mode === 'live') e.letter = prepareLetter(e.seat, e.data, e.asleep, e.paused);
     else { pendingLetter = demoLetter(); e.letter = true; }
-  } else if (SAY[e.type]) addDiary(SAY[e.type](e));
+  } else if (SAY[e.type]) { const line = SAY[e.type](e); if (line) addDiary(line); }
   house.event(e);
   if (e.type === 'init' && e.update) lastUpdate = e.update;
   if (e.type === 'update') lastUpdate = e.info;
@@ -369,6 +469,42 @@ $('wallet-forget').addEventListener('click', () => {
   $('wallet-btn').textContent = 'Connect wallet'; $('wallet-forget').hidden = true;
 });
 
+// ---------- the IMD Explorer beside the house: the local side-by-side page (aidude ideas evidence, port 8798) ----------
+// On its own the house offers "Show on IMD Explorer" while that page answers: it opens with the seat's agent page on
+// the left and this house on the right (following the same job, if one is followed). Inside it, the page says so
+// ({type: 'lcp:split', on: true, activeJobs}) and the button hides the explorer again: the page goes back to this
+// house alone; "Random active job" asks the page to follow one (its job page left, this house following it).
+// A hosted copy, or a page framed by anything else, shows neither.
+const SPLIT = 'http://127.0.0.1:8798/side-by-side';
+let inSplit = false, splitUp = false, activeJobs = 0;
+
+function explorerButton() {
+  const b = $('explorer-btn'), r = $('random-job-btn');
+  b.hidden = !inSplit && (mode !== 'live' || seatId == null || !(splitUp && window.parent === window));
+  b.textContent = inSplit ? 'Hide explorer' : 'Show on IMD Explorer';
+  r.hidden = !inSplit;
+  r.disabled = !activeJobs;
+  r.title = activeJobs ? `Follow one of the ${activeJobs} active job${activeJobs === 1 ? '' : 's'}, picked at random` : 'No active jobs right now';
+}
+
+$('random-job-btn').addEventListener('click', () => { if (inSplit) window.parent.postMessage({ type: 'lcp:randomJob' }, '*'); });
+
+async function probeSplit() {
+  if (window.parent === window) {
+    try { await fetch(SPLIT, { mode: 'no-cors', cache: 'no-store' }); splitUp = true; } catch (e) { splitUp = false; }
+  }
+  explorerButton();
+}
+probeSplit();
+setInterval(probeSplit, 60000);
+
+$('explorer-btn').addEventListener('click', () => {
+  if (inSplit) { window.parent.postMessage({ type: 'lcp:hideExplorer', hash: location.hash }, '*'); return; }
+  const q = new URLSearchParams({ seat: String(seatId) });
+  if (followed) q.set('job', followed.id);
+  location.href = SPLIT + '?' + q;
+});
+
 // ---------- the rest of the controls ----------
 $('seat-form').addEventListener('submit', (e) => { e.preventDefault(); const v = $('seat-input').value; if (v !== '') visit(v); });
 $('random-btn').addEventListener('click', randomBusySeat);
@@ -392,3 +528,4 @@ window.__house = () => house;   // for local testing in the console
 window.__live = live;
 window.__theme = () => theme;
 window.__demo = demo;
+window.__follower = follower;

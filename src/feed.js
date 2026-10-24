@@ -149,6 +149,42 @@ async function seatDetail(id) {
   return null;
 }
 
+// ---------- the machine wall: provider, model and effort while he works (relay /proxy/seats/<n>/machine) ----------
+const PROVIDER = { claude: 'CLAUDE CODE', codex: 'CODEX' };
+// the dial's seven marks, low to high (Claude's runtimes say low..max, Codex's minimal..xhigh, max or ultra)
+export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+
+// 'claude-opus-5-5' -> 'OPUS 5.5', 'gpt-6-astra' -> 'GPT-6 ASTRA', anything else in capitals
+export function modelName(id) {
+  if (!id) return null;
+  const c = /^claude-([a-z]+)-(\d+(?:-\d+)*)$/.exec(id);
+  if (c) return (c[1] + ' ' + c[2].replace(/-/g, '.')).toUpperCase();
+  const g = /^(gpt-[\d.]+)-?(.*)$/.exec(id);
+  if (g) return (g[1] + (g[2] ? ' ' + g[2].replace(/-/g, ' ') : '')).toUpperCase();
+  return id.replace(/-/g, ' ').toUpperCase();
+}
+
+// the model's family, the word its symbol comes from: 'claude-opus-5-5' -> 'opus', 'gpt-6-astra' -> 'astra'
+export function modelFamily(id) {
+  const m = /^claude-([a-z]+)-\d/.exec(id || '') || /^gpt-[\d.]+-([a-z]+)/.exec(id || '');
+  return m ? m[1] : null;
+}
+
+// What the house shows of the work: the running step's runtime and model (its job record), else the seat's runtime when
+// it has one; premium = the step runs the seat's premium model, the one tier whose effort the seat record shows.
+export function machineInfo(rec) {
+  if (!rec) return null;
+  const rts = rec.runtimes || [], t = rec.task;
+  const rt = (t && rts.find((r) => r.id === t.runtime)) || (rts.length === 1 ? rts[0] : null);
+  const runtime = (t && t.runtime) || (rt && rt.id);
+  if (!runtime) return null;
+  const model = (t && t.model) || null, prem = rt && rt.premiumModel;
+  const premium = !!(model && prem && prem.model === model), effort = premium ? prem.effort || null : null;
+  return { runtime, provider: PROVIDER[runtime] || runtime.toUpperCase(), modelId: model, model: modelName(model),
+    family: modelFamily(model), premium, effort, level: effort ? EFFORTS.indexOf(effort) : -1,
+    version: rt ? rt.version : null, step: t ? t.step : null };
+}
+
 function prevChanged(a, b) {
   return !a || ['attempts', 'accepted', 'rejected', 'failed', 'working'].some((k) => a[k] !== b[k]);
 }
@@ -160,7 +196,31 @@ export class LiveFeed {
     this.seenOracle = null; this.fails = 0; this.leftAt = null;
     this.detail = null; this.update = null; this.detailTimer = null; this.lastDetailAt = 0;
     this.myJobs = new Set(); this.seenDone = new Set(); this.doneReady = false;
+    this.machine = null; this.machineTimer = null;
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && this.seat != null) this.poll(); });
+  }
+
+  // while the seat works: what its machine runs, read when the work starts and again every 45 s (15 s while the step is
+  // not found yet); onEvent({type: 'machine', info}) when it changes, info null when the work ends or nothing is known
+  async checkMachine() {
+    clearTimeout(this.machineTimer);
+    const id = this.seat;
+    if (id == null || !(this.prev && this.prev.data && this.prev.data.working)) return this.setMachine(null);
+    let info = null;
+    try {
+      const r = await fetch('/proxy/seats/' + id + '/machine', { cache: 'no-store' });
+      if (r.ok) info = machineInfo(await r.json());
+    } catch (e) { /* no relay: the machine shows nothing */ }
+    if (id !== this.seat || !(this.prev && this.prev.data && this.prev.data.working)) return;
+    this.setMachine(info);
+    this.machineTimer = setTimeout(() => this.checkMachine(), info && info.modelId ? 45000 : 15000);
+  }
+
+  setMachine(info) {
+    const key = (m) => (m ? [m.runtime, m.modelId, m.effort, m.step].join('|') : '');
+    if (key(info) === key(this.machine)) return;
+    this.machine = info;
+    this.onEvent({ type: 'machine', info });
   }
 
   async fetchSwarm() {
@@ -172,14 +232,14 @@ export class LiveFeed {
 
   setSeat(id) {
     this.seat = id; this.prev = null; this.seenOracle = null; this.leftAt = null; this.detail = null; this.update = null;
-    this.myJobs = new Set(); this.seenDone = new Set(); this.doneReady = false;
-    clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer);
+    this.myJobs = new Set(); this.seenDone = new Set(); this.doneReady = false; this.machine = null; this.machineLoop = false;
+    clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer); clearTimeout(this.machineTimer);
     const first = this.checkDetail(true);
     Promise.race([first, new Promise((r) => setTimeout(r, 3000))]).then(() => { if (this.seat === id) this.poll(); });
     this.oracleTimer = setTimeout(() => this.checkOracle(), 4000);
   }
 
-  stop() { this.seat = null; clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer); }
+  stop() { this.seat = null; clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer); clearTimeout(this.machineTimer); }
 
   // the task he starts: the live event if it names the step, else his usual kind of work. The event names the step and
   // the job; the job record (relay) adds the template, the launch kind and the role (see refineWork). Until it is read,
@@ -234,8 +294,8 @@ export class LiveFeed {
       this.onEvent({ type: 'jobdone', state: e.state, jobId: e.jobId });
       if (e.state !== 'completed') continue;
       const rec = ((this.detail && this.detail.recent) || []).find((t) => t.jobId === e.jobId);
-      if (rec && rec.launch) this.onEvent({ type: 'launched', kind: rec.launch });
-      else jobInfo(e.jobId).then((job) => { if (job && job.launch && this.seat != null) this.onEvent({ type: 'launched', kind: job.launch }); });
+      if (rec && rec.launch) this.onEvent({ type: 'launched', kind: rec.launch, jobId: e.jobId });
+      else jobInfo(e.jobId).then((job) => { if (job && job.launch && this.seat != null) this.onEvent({ type: 'launched', kind: job.launch, jobId: e.jobId }); });
     }
   }
 
@@ -310,6 +370,9 @@ export class LiveFeed {
       }
       this.watchDone(sw.events);
       this.prev = { data: cur, asleep, verifierDown, paused };
+      const working = !!(cur && cur.working);
+      if (working && !this.machineLoop) { this.machineLoop = true; this.checkMachine(); }
+      else if (!working && this.machineLoop) { this.machineLoop = false; clearTimeout(this.machineTimer); this.setMachine(null); }
       this.onStatus(status);
     } catch (err) {
       this.fails++;
@@ -363,6 +426,98 @@ export class LiveFeed {
   }
 }
 
+// ---------- following one job (#/job/<id>) ----------
+// The job record through the local relay (/proxy/jobs/<id>/steps; /jobs has no CORS), read every 10 s. A step runs while
+// the record shows it working, with a `live` part and a seat. It started at the updatedAt of the first reading that saw it
+// running: the parallel audits of one launch share live.since (the moment they were offered), while each updatedAt is
+// the moment its seat took it (job a39fefdf, 2026-10-16).
+const FOLLOW_MS = 10000;
+const JOB_ENDED = ['completed', 'blocked', 'failed', 'cancelled'];
+const STEP_RUNNING = ['working', 'running'], STEP_OVER = ['accepted', 'rejected', 'failed', 'verifying', 'blocked'];
+
+// the steps running now, the longest-running first; started: key#attempt -> start, kept between readings
+export function runningSteps(steps, started = new Map()) {
+  const out = [];
+  for (const s of steps || []) {
+    if (s.seat == null || !(STEP_RUNNING.includes(s.state) || (s.live && !STEP_OVER.includes(s.state)))) continue;
+    const k = s.key + '#' + s.attempt;
+    if (!started.has(k)) started.set(k, Date.parse(s.updatedAt) || Date.now());
+    out.push({ ...s, start: started.get(k) });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+// the step the house shows: the one it shows while that still runs, else the one running longest, else none (wait)
+export function pickStep(running, current) {
+  const same = current && running.find((s) => s.key === current.key && s.seat === current.seat);
+  return same || running[0] || null;
+}
+
+// when no step runs: the seat that worked on the job last
+export function lastWorker(steps) {
+  return (steps || []).filter((s) => s.seat != null).sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0))[0] || null;
+}
+
+// onChange({type}): start (the first reading: step running now or the last worker, or none), step (another step or seat
+// runs: the house moves; picked = the visitor chose it), waiting (its step is over and nothing else runs), ended
+// (completed, blocked; first = it already was), error (no relay or the plane did not answer; it retries)
+export class JobFollower {
+  constructor(onChange) { this.onChange = onChange; this.id = null; this.timer = null; }
+
+  // prefer: a step key the visitor chose; shown if it runs now (several seats can work on one job at once)
+  start(id, prefer = null) {
+    this.stop();
+    this.id = id; this.current = null; this.started = new Map(); this.fails = 0; this.first = true; this.waiting = false;
+    this.preferKey = prefer;
+    this.poll();
+  }
+
+  // the visitor chose a step (in the explorer): read again now, and show its seat if the step runs; else nothing changes
+  prefer(key) { if (!this.id) return; this.preferKey = key; this.poll(); }
+
+  stop() { this.id = null; clearTimeout(this.timer); }
+
+  async poll() {
+    clearTimeout(this.timer);
+    const id = this.id;
+    if (!id) return;
+    let rec;
+    try {
+      const r = await fetch('/proxy/jobs/' + id + '/steps', { cache: 'no-store' });
+      if (!r.ok) throw new Error('the relay answered ' + r.status);
+      rec = await r.json();
+    } catch (err) {
+      if (id !== this.id) return;
+      this.fails++;
+      this.onChange({ type: 'error', jobId: id, error: String(err.message || err), first: this.first && this.fails === 1 });
+      this.timer = setTimeout(() => this.poll(), Math.min(FOLLOW_MS * 2 ** this.fails, 120000));
+      return;
+    }
+    if (id !== this.id) return;
+    this.fails = 0;
+    const first = this.first;
+    this.first = false;
+    if (JOB_ENDED.includes(rec.state)) {
+      this.id = null;
+      this.onChange({ type: 'ended', jobId: id, job: rec, state: rec.state, first, step: this.current || lastWorker(rec.steps) });
+      return;
+    }
+    const running = runningSteps(rec.steps, this.started);
+    const picked = this.preferKey != null ? running.find((s) => s.key === this.preferKey) || null : null;
+    this.preferKey = null;
+    const next = picked || pickStep(running, this.current);
+    if (first) this.onChange({ type: 'start', jobId: id, job: rec, step: next || lastWorker(rec.steps), running: !!next, count: running.length, picked: !!picked });
+    else if (next && (!this.current || next.key !== this.current.key || next.seat !== this.current.seat)) {
+      this.onChange({ type: 'step', jobId: id, job: rec, step: next, from: picked || this.waiting ? null : this.current, count: running.length, picked: !!picked });
+    } else if (!next && this.current && !this.waiting) {
+      this.waiting = true;
+      this.onChange({ type: 'waiting', jobId: id, job: rec, from: this.current });
+    }
+    if (next) { this.current = next; this.waiting = false; }
+    this.timer = setTimeout(() => this.poll(), FOLLOW_MS);
+  }
+}
+
 // A scripted day: every event the house knows, one after another. Each step waits until he has done what it set off
 // (reached the place and worked there a few seconds, or finished the scene) and holds a moment before the next one.
 // house: () => the House the page shows.
@@ -385,11 +540,14 @@ export class DemoFeed {
     const finished = (name) => () => { const x = h(); return !!x && !x.queue.some((q) => q.name === name) && !(x.current && x.current.name === name); };
     const after = (s) => { const t = Date.now() + s * 1000; return () => Date.now() >= t; };
     const phase = (p) => this.onEvent({ type: 'phase', phase: p });
+    // the machine wall of a Claude seat: premium on opus-5-5 at xhigh; an oracle question runs a cheaper tier, effort unknown
+    const machine = (model) => this.onEvent({ type: 'machine', info: model && machineInfo({ task: { runtime: 'claude', model, step: 'demo' },
+      runtimes: [{ id: 'claude', version: 'demo', premiumModel: { model: 'claude-opus-5-5', effort: 'xhigh' } }] }) });
     const update = { current: '0.1.4+011c9f4c', latest: '0.1.4+1103e27b', behind: 3, latestAgeH: 7, needs: true };
     const steps = [                                  // [what happens, wait until, then hold seconds]
       [() => { phase('day'); this.onEvent({ type: 'init', seat: 'demo', data: D, asleep: false, working: false, accepted: D.accepted, verifierDown: false, letter: true }); status(); }, () => finished('letter'), 2],
       [() => { D.queued = 1; this.onEvent({ type: 'phone' }); status(); }, () => finished('phone'), 1],
-      [() => { D.queued = 0; D.working = true; this.onEvent({ type: 'work', category: 'token', base: 'token', label: 'token launch work' }); status(); }, () => working(), 0],
+      [() => { D.queued = 0; D.working = true; this.onEvent({ type: 'work', category: 'token', base: 'token', label: 'token launch work' }); machine('claude-opus-5-5'); status(); }, () => working(), 0],
       [() => { D.attempts++; this.onEvent({ type: 'post', n: 1 }); this.onEvent({ type: 'submitted', category: 'token', label: 'token launch work', task: { nodeKey: 'build_contract_project' } }); status(); }, () => finished('post'), 1],
       [() => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(); }, () => finished('mail'), 1],
       [() => { kind('website', 'a website', 'other'); status(); }, () => working(), 0],
@@ -397,8 +555,8 @@ export class DemoFeed {
       [() => { kind('video', 'a video task', 'other'); status(); }, () => working(), 0],
       [() => { kind('audio', 'an audio task', 'other'); status(); }, () => working(), 0],
       [() => { kind('image', 'an image task', 'other'); status(); }, () => working(), 0],
-      [() => { kind('oracle', 'an oracle question', 'other'); status(); }, () => working(), 0],
-      [() => { kind('review', 'a review'); status(); }, () => working(), 0],
+      [() => { kind('oracle', 'an oracle question', 'other'); machine('claude-sonnet-5'); status(); }, () => working(), 0],
+      [() => { kind('review', 'a review'); machine('claude-opus-5-5'); status(); }, () => working(), 0],
       [() => { kind('tests', 'tests'); status(); }, () => working(), 0],
       [() => { kind('assemble', 'assembly work'); status(); }, () => working(), 0],
       [() => { kind('docs', 'docs'); status(); }, () => working(), 0],
@@ -408,7 +566,7 @@ export class DemoFeed {
       [() => { this.onEvent({ type: 'jobdone', state: 'completed' }); this.onEvent({ type: 'launched', kind: 'custom_token' }); status(); }, () => finished('jobdone'), 3],
       [() => { this.onEvent({ type: 'alarm' }); status(); }, () => after(4), 0],
       [() => { this.onEvent({ type: 'jobdone', state: 'blocked' }); status(); }, () => finished('jobdone'), 1],
-      [() => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }, () => finished('smoke'), 2],
+      [() => { D.working = false; this.onEvent({ type: 'workdone' }); machine(null); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }, () => finished('smoke'), 2],
       [() => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }, () => finished('mail'), 2],
       // the page knocks for an update 9 s after it arrives: wait for the parcel and the knock to be over
       [() => { this.onEvent({ type: 'update', info: update }); status(); }, () => { const t = after(11), k = finished('knock'); return () => t() && k() && !!h() && h().state.parcel; }, 2],

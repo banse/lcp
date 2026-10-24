@@ -28,6 +28,7 @@ export const SPOTS = {
   bowl: { floor: 0, x: 140, face: 1 },
   livingMid: { floor: 0, x: 226, face: 1 },
   kitchenWin: { floor: 0, x: 80, face: -1 },
+  party: { floor: 0, x: 118, face: 1 },               // the kitchen floor: he and the dog celebrate a followed job
   bed: { floor: 2, x: 104, face: -1 },
   bedEdge: { floor: 2, x: 112, face: 1 },
   gym: { floor: 2, x: 146, face: 1 },

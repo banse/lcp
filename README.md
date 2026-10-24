@@ -35,7 +35,9 @@ and is remembered per browser.
   cheers; the dog naps (breathing), glances, tilts, wags and walks. He stands with his back to us at the thing he
   works on, as on imd.fun; in the armchair only his head shows over the back, in bed the back of his head on the
   pillow. When he knocks on the glass, his front-facing sprite fills the screen and bumps towards you with each
-  knock.
+  knock. A light mode (2026-10-24) puts a white page around the house, like explorer.imd.fun's light mode: a page
+  that embeds the house sends `postMessage({type: 'lcp:mode', mode: 'light' | 'dark'})` (the side-by-side page sends
+  the explorer's mode), kept for the tab in sessionStorage; dark otherwise. The house keeps its own sky.
 - **LCP** (parked, `src/themes/pixel.js`; the switch said Pixel until 2026-10-24): the 480 x 320 pixel house in the original game's look.
 
 ## Run
@@ -45,6 +47,7 @@ A browser wallet only injects into http pages, so serve it rather than opening t
     python3 -I serve.py . 8795             # from this folder; caching off
     open http://127.0.0.1:8795/#demo       # every event, each when he is done with the last (~9 min a loop)
     open http://127.0.0.1:8795/#/seat/558  # a live seat; no hash opens a random busy seat
+    open http://127.0.0.1:8795/#/job/<id>  # follow a job from seat to seat (needs the relay)
 
 ## How it works
 
@@ -103,5 +106,44 @@ A browser wallet only injects into http pages, so serve it rather than opening t
   parked LCP look has no stations for them and shows them like the launch they belong to. Also: he cheers when a job
   he worked on is done and scratches his head when it is blocked; fireworks go up when a launch he worked on goes
   live; the mantel clock rings when a schedule opened his job. The relay adds `/proxy/scheduled` and step roles.
-- Console helpers: `__house()`, `__live`, `__theme()`, `__demo` (`__live.onEvent({type: 'pause'})` plays an event through the page).
+- Following a job (`#/job/<id>`, 2026-10-24): `JobFollower` in `feed.js` reads `/proxy/jobs/<id>/steps` every 10 s (the
+  relay, cached 5 s). The house is the seat on the step that has run longest (a step runs while the record shows it
+  working with a `live` part; it started at the `updatedAt` of the first reading that saw it). It stays there while
+  that step runs; when the step is over it moves to the seat working on the job next, again the longest-running one if
+  several are, or waits until a seat starts. The diary goes on across the moves and the address stays `#/job/<id>`.
+  When the job completes, big fireworks fill the sky (over the roof too) and he dances in the kitchen with his dog for
+  about 16 s (the dog wags, barks and bows; the kitchen stays lit even if the seat sleeps);
+  blocked, he scratches his head. A job already over when opened shows its last seat. Any other seat, the demo or a
+  random seat ends the following. Without the relay it says so and retries. `#/job/<id>/step/<key>` chooses a step
+  (several seats can work on one job at once): if it runs now the house moves to its seat and stays while it runs,
+  else nothing changes; the address goes back to `#/job/<id>`. The side-by-side page sends it when a step row of the
+  followed job opens in the explorer.
+- The machine wall's readout (IMD look, 2026-10-24, the owner chose a ticker and the dial over a screen readout or
+  instruments alone): while the seat works, a green dot-matrix ticker along the machine's top edge scrolls
+  `PROVIDER · MODEL · EFFORT` and the big dial's needle sits on the effort (seven marks: minimal, low, medium, high,
+  xhigh, max, ultra; a green arc up to it). `LiveFeed.checkMachine` reads `/proxy/seats/<n>/machine` when the work
+  starts and every 45 s: the seat's runtimes with the premium tier's model and effort (seat record), and the step it
+  runs in the active jobs (job record `live`: runtime and model, no effort). The effort shows only when the step runs
+  the premium model; otherwise the dial shows "?" (an oracle question, say, runs a cheaper tier). A seat the live feed
+  still marks working after its step was accepted shows "MODEL ?" for that short while. The diary says it once per
+  model. Without the relay the machine shows nothing extra. Switched off the same day (owner: revert the machine,
+  other ways wanted): `FEATURES.machineTicker` brings the ticker, the dial, its diary line and legend row back; the
+  data (`checkMachine`, `state.machine`) keeps running for whatever shows it next.
+- What he works with, shown around the house instead (the owner's pick of three, 2026-10-24, from the owner's own
+  examples: chimney smoke for effort, the attic light for premium work): the attic window lights up while the step
+  runs the seat's premium model, amber for Claude Code and white-green for Codex; the chimney smoke follows that
+  premium work's effort (2 to 14 puffs, bigger, faster and darker towards max and ultra; other tiers publish no effort
+  and keep the usual four puffs); at his station his bubble shows the model's namesake (`MODEL_SYMBOL` in
+  `src/themes/imd.js`: Opus a note, Sonnet a quill, Haiku a leaf, Fable a book, Astra a star, Sol the sun, Luna the
+  moon), taking turns with the activity's own icon. The diary names the exact model once.
+- The IMD Explorer beside the house (2026-10-24): the seat row has a button for the local side-by-side page (aidude
+  ideas `evidence/seat-house-life-sim/side-by-side/`, `http://127.0.0.1:8798/side-by-side`). On its own the house
+  shows "Show on IMD Explorer" while that page answers (a `no-cors` probe every 60 s; a hosted copy never shows it, nor
+  does the demo); it opens `?seat=N` (and `&job=<id>` while a job is followed): the seat's agent page on the left,
+  this house on the right. Inside that page (it posts `{type: 'lcp:split', on: true}`) the button says "Hide explorer"
+  and posts `{type: 'lcp:hideExplorer', hash}`; the page then gives way to the house alone on the same address.
+  "Random active job" (only there; greyed out when the page counts no active jobs, `activeJobs` in its message) posts
+  `{type: 'lcp:randomJob'}`: the page picks one, opens its job page on the left and has this house follow it. Both
+  buttons sit at the right end of the seat row and wrap below it when the pane is narrow.
+- Console helpers: `__house()`, `__live`, `__theme()`, `__demo`, `__follower` (`__live.onEvent({type: 'pause'})` plays an event through the page).
 - Fonts come from Google Fonts here; a swarm-hosted build must bundle them (the host allows same-origin scripts only).

@@ -20,7 +20,7 @@ export class House {
     this.carrier = null;
     this.state = { action: null, asleep: false, away: false, sign: false, working: false, smoke: false, phoneRinging: false,
       mailbox: 0, mailDue: 0, parcelDue: false, outgoing: 0, tvStatic: false, frames: 0, doorOpen: false, parcel: false,
-      needsUpdate: false, installProgress: 0, atStation: null, fireworks: 0, alarm: 0 };
+      needsUpdate: false, installProgress: 0, atStation: null, fireworks: 0, bigFireworks: 0, alarm: 0, machine: null };
     this.queue = [];
     this.current = null;
     this.cooldown = {};
@@ -81,7 +81,7 @@ export class House {
         s.asleep = e.asleep; s.away = !!e.paused; s.sign = s.away; s.working = e.working; s.frames = e.accepted; s.tvStatic = e.verifierDown;
         this.workCategory = e.category || this.workCategory || 'other'; this.workBase = e.base || this.workBase || 'other';
         s.needsUpdate = !!(e.update && e.update.needs); s.parcel = s.needsUpdate;
-        this.queue = []; this.current = null;
+        this.queue = this.queue.filter((q) => q.name === 'celebrate'); this.current = null;   // the seat's first reading can come after it
         if (s.away) this.leave();
         else this.place(e.asleep ? 'bed' : e.working && this.workKind === 'computer' ? 'desk' : 'livingMid');
         if (e.asleep && !s.away) this.man.pose = 'sleep';
@@ -99,7 +99,11 @@ export class House {
       // a job he worked on is done: he cheers when it completed, scratches his head when it is blocked
       case 'jobdone': this.push(4, 'jobdone', () => this.jobDone(e.state === 'completed')); break;
       case 'launched': s.fireworks = sec(12); break;               // a launch he worked on went live: fireworks
+      // the job the page followed is done: big fireworks, and he dances in the garden; it gets him out of bed too (9.5 is
+      // above sleep), not back home while the seat is paused (away, 10)
+      case 'celebrate': s.fireworks = sec(32); s.bigFireworks = sec(32); this.push(9.5, 'celebrate', () => this.celebrate()); break;
       case 'alarm': s.alarm = sec(4); this.sound.ring(); break;    // a schedule opened his job: the clock rings
+      case 'machine': s.machine = e.info || null; break;           // what his machine runs while he works (feed.js machineInfo)
       case 'workdone': s.working = false; break;
       case 'post': this.push(4, 'post', () => this.post()); break;
       case 'accepted': case 'rejected': this.letterFor(e.type === 'accepted', e.n); break;
@@ -156,12 +160,14 @@ export class House {
     this.state.doorOpen = (m.floor === 'out' || (m.floor === 0 && m.x < 70)) && Math.abs(m.x - DOOR_X) < 10;
     if (this.state.outgoing > 0) this.state.outgoing--;
     if (this.state.fireworks > 0) this.state.fireworks--;
+    if (this.state.bigFireworks > 0) this.state.bigFireworks--;
     if (this.state.alarm > 0) this.state.alarm--;
     if (this.state.phoneRinging && t % 30 === 0) this.sound.ring();
   }
 
   start(item) {
     this.man.icon = null; this.man.carry = null; this.state.action = null; this.state.closeup = null;   // a cut-off knock leaves no overlay
+    this.state.party = item.name === 'celebrate';
     if (this.man.pose === 'sleep' && item.name !== 'sleep') this.place('bed', true);
     const m = this.man;
     if (m.pose !== 'sleep') m.y = m.floor === 'out' ? OUT_Y : FLOOR_Y[m.floor];   // an interrupted climb lands him on his floor
@@ -269,6 +275,25 @@ export class House {
   *jobDone(ok) {
     if (ok) { this.sound.jingle(); yield* this.act('cheer', 'dance', 2.5, 'heart'); }
     else yield* this.act('puzzled', 'puzzled', 3, 'ask');
+  }
+
+  // in the kitchen with the dog (owner, 2026-10-24: not alone in the garden): the dog runs over to the side it comes
+  // from and wags, barks and bows; he dances facing it under the fireworks. The kitchen stays lit even when the seat
+  // sleeps (state.party, set in start); after it the dog goes back to what the house says (bed, the door, free).
+  *celebrate() {
+    const d = this.dog, x = this.spots.party.x, side = d.x < x ? -1 : 1;
+    this.dogTo(x + side * 18, 'party', 34);
+    yield* this.goTo('party');
+    this.man.face = side;
+    this.state.fireworks = Math.max(this.state.fireworks, sec(18));            // still going while he dances, however long
+    this.state.bigFireworks = Math.max(this.state.bigFireworks, sec(18));      // the walk down from upstairs took
+    this.sound.jingle();
+    yield* this.act('cheer', 'dance', 6, 'star');
+    this.sound.jingle();
+    yield* this.act('cheer', 'dance', 6, 'heart');
+    this.sound.jingle();
+    yield* this.act('cheer', 'dance', 4, 'note');
+    d.mode = undefined;
   }
 
   *post() {

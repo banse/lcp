@@ -11,6 +11,15 @@ of the objective). That route sends no CORS header, so a browser cannot read it 
 (api.imd.fun/jobs/<id>, no CORS either): a running task's live event names its step and job, not the job's template
 or launch kind, which decide what he does. Cached for 10 minutes.
 
+/proxy/jobs/<uuid>/steps returns the same job for following it (#/job/<uuid>): its state, objective and blocked
+reason, and per step the key, role, state, attempt, dependencies, updatedAt, seat, and whether it runs now (the
+record's `live`, with its `since`, runtime and model). Cached for 5 s.
+
+/proxy/seats/<n>/machine returns what the seat's machine wall shows while it works: its runtimes (id, version and the
+premium tier's model and effort, from the seat record; the other tiers are not published) and the step it runs now,
+found in the records of the jobs not over yet among the newest 200 (runtime and model from the step's `live`; no
+effort there). Cached for 10 s; the job list for 15 s.
+
 /proxy/scheduled returns the ids of the jobs and oracle questions that the active and paused schedules opened
 (api.imd.fun/schedules and /schedules/<id>, no CORS). Cached for 10 minutes. Listens on 127.0.0.1 only.
 """
@@ -25,6 +34,9 @@ import urllib.request
 
 CACHE = {}
 JOBS = {}
+STEPS = {}
+MACHINE = {}
+ACTIVE = [0, []]
 SCHEDULED = [0, b'{"ids": []}']
 FIELDS = ('tokenId', 'online', 'daemonVersion', 'pausedByOwnerAt')
 
@@ -45,6 +57,10 @@ def seat_record(n):
     out['recent'] = [{'nodeKey': t.get('nodeKey'), 'role': t.get('role'), 'launch': t.get('launch'), 'status': t.get('status'),
                       'submittedAt': t.get('submittedAt'), 'jobId': t.get('jobId'), 'objective': (t.get('objective') or '')[:100]}
                      for t in (d.get('work') or [])[:20]]
+    out['runtimes'] = [{'id': r.get('id'), 'version': r.get('version'),
+                        'premiumModel': {'model': (r.get('premiumModel') or {}).get('model'),
+                                         'effort': (r.get('premiumModel') or {}).get('effort')}}
+                       for r in d.get('runtimes') or []]
     body = json.dumps(out).encode()
     CACHE[n] = (time.time(), body)
     return body
@@ -72,6 +88,57 @@ def job_record(jid):
            'oracleRequestId': j.get('oracleRequestId')}
     body = json.dumps(out).encode()
     JOBS[jid] = (time.time(), body)
+    return body
+
+
+def job_steps(jid):
+    hit = STEPS.get(jid)
+    if hit and time.time() - hit[0] < 5:
+        return hit[1]
+    d = fetch_json(f'https://api.imd.fun/jobs/{jid}')
+    j = d.get('job', d)
+    launch = j.get('launch') or {}
+    steps = []
+    for n in j.get('nodes') or []:
+        live = n.get('live') or {}
+        seat = (live.get('seat') or n.get('seat') or {}).get('tokenId')
+        steps.append({'key': n.get('key'), 'role': n.get('role'), 'state': n.get('state'), 'attempt': n.get('attempt'),
+                      'dependsOn': n.get('dependsOn') or [], 'updatedAt': n.get('updatedAt'),
+                      'seat': int(seat) if str(seat or '').isdigit() else None, 'live': bool(live), 'since': live.get('since'),
+                      'runtime': live.get('runtime'), 'model': live.get('model')})
+    out = {'id': j.get('id'), 'state': j.get('state'), 'template': j.get('template'),
+           'launch': launch.get('kind') if launch.get('requested') else None,
+           'objective': (j.get('objective') or '')[:160], 'blockedReason': j.get('blockedReason'),
+           'updatedAt': j.get('updatedAt'), 'steps': steps}
+    body = json.dumps(out).encode()
+    STEPS[jid] = (time.time(), body)
+    return body
+
+
+def active_job_ids():
+    if time.time() - ACTIVE[0] < 15:
+        return ACTIVE[1]
+    ids = [j['id'] for j in fetch_json('https://api.imd.fun/jobs?limit=200').get('jobs') or []
+           if j.get('id') and j.get('state') not in ('completed', 'blocked', 'failed', 'cancelled')]
+    ACTIVE[0], ACTIVE[1] = time.time(), ids
+    return ids
+
+
+def seat_machine(n):
+    hit = MACHINE.get(n)
+    if hit and time.time() - hit[0] < 10:
+        return hit[1]
+    task = None
+    for jid in active_job_ids():
+        try:
+            steps = json.loads(job_steps(jid)).get('steps') or []
+        except Exception:  # noqa: BLE001 - one unreadable job does not hide the others
+            continue
+        for s in steps:
+            if s['seat'] == n and s['live'] and s['state'] in ('working', 'running'):
+                task = {'jobId': jid, 'step': s['key'], 'runtime': s['runtime'], 'model': s['model'], 'since': s['since']}
+    body = json.dumps({'runtimes': json.loads(seat_record(n)).get('runtimes') or [], 'task': task}).encode()
+    MACHINE[n] = (time.time(), body)
     return body
 
 
@@ -104,6 +171,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         path = self.path.split('?')[0]
         m = re.fullmatch(r'/proxy/seats/(\d{1,4})', path)
         j = re.fullmatch(r'/proxy/jobs/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', path)
+        st = re.fullmatch(r'/proxy/jobs/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/steps', path)
+        mc = re.fullmatch(r'/proxy/seats/(\d{1,4})/machine', path)
+        if mc and int(mc.group(1)) < 2000:
+            try:
+                return self.send_json(seat_machine(int(mc.group(1))))
+            except Exception as e:  # noqa: BLE001 - report, never crash the server
+                return self.send_error(502, f'machine unavailable: {type(e).__name__}')
+        if st:
+            try:
+                return self.send_json(job_steps(st.group(1)))
+            except Exception as e:  # noqa: BLE001 - report, never crash the server
+                return self.send_error(502, f'job unavailable: {type(e).__name__}')
         if path == '/proxy/scheduled':
             try:
                 return self.send_json(scheduled_ids())
