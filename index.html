@@ -13,14 +13,14 @@
 <header class="topbar">
   <a class="brand" href="./">Little Computer Pepes</a>
   <nav class="toggles" aria-label="Look and settings">
-    <div class="looks" role="group" aria-label="Look">
+    <div class="looks" role="group" aria-label="Look" data-feature="lookSwitch">
       <button type="button" class="quiet" data-look-btn="imd" aria-pressed="false">IMD</button>
       <button type="button" class="quiet" data-look-btn="pixel" aria-pressed="false">LCP</button>
     </div>
     <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog">Legend</button>
     <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
     <button type="button" id="sound-btn" class="quiet" aria-pressed="false">Sound off</button>
-    <button type="button" id="wallet-btn">Connect wallet</button>
+    <button type="button" id="wallet-btn" data-feature="wallet">Connect wallet</button>
   </nav>
 </header>
 <main class="page">
@@ -88,7 +88,7 @@
 
   <dialog id="legend" class="legend" aria-labelledby="legend-title">
     <form method="dialog" class="legend-head"><h2 id="legend-title">What he does, and why</h2><button type="submit" class="quiet-ink" autofocus>Close</button></form>
-    <p class="small-ink">Everything in the house comes from the seat's public record. While the seat works on a task, the kind of task decides where he goes (the mapping of the <span id="legend-look"></span> look; each look has its own):</p>
+    <p class="small-ink">Everything in the house comes from the seat's public record. While the seat works on a task, the kind of task decides where he goes<span data-feature="lookSwitch"> (the mapping of the <span id="legend-look"></span> look; each look has its own)</span>:</p>
     <table>
       <thead><tr><th scope="col">The seat works on</th><th scope="col">He</th></tr></thead>
       <tbody id="legend-work"></tbody>

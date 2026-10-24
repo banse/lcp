@@ -8,9 +8,13 @@ import { THEMES, DEFAULT_THEME } from './themes/index.js';
 import { setPhase } from './world.js';
 
 const $ = (id) => document.getElementById(id);
+// built but switched off (the owner, 2026-10-24: "dont delete the cut features, we may add it back later"): the look
+// switch (IMD | LCP) and the wallet lookup. Elements marked data-feature="…" show only when theirs is on.
+const FEATURES = { lookSwitch: false, wallet: false };
+for (const el of document.querySelectorAll('[data-feature]')) el.hidden = !FEATURES[el.dataset.feature];
 const canvas = $('game');
 let g = canvas.getContext('2d');
-let theme = THEMES[store('seathouse:theme')] || THEMES[DEFAULT_THEME];
+let theme = (FEATURES.lookSwitch && THEMES[store('seathouse:theme')]) || THEMES[DEFAULT_THEME];
 
 const sound = new Sound();
 let house = null, seatSeed = 4242, feed = null, seatId = null, mode = null, tick = 0;

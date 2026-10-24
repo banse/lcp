@@ -12,6 +12,13 @@ with Activision or Identity.md.
 Status: local test build (2026-10-24). The idea, its evidence and the plan for a swarm-built IPFS site are in
 aidude `ideas/seat-house-life-sim.md`.
 
+## Switched off, not removed (2026-10-24)
+
+`FEATURES` in `src/main.js` turns built features on and off; elements marked `data-feature="…"` show only when theirs
+is on. The owner switched off the look switch (`lookSwitch`: the page always uses the IMD look) and the wallet lookup
+(`wallet`: no Connect wallet button, so a live seat never knocks for its owner; the demo still knocks). Set a flag to
+`true` to bring a feature back; nothing else changes.
+
 ## Looks (themes)
 
 Two looks share one house logic (`src/brain.js`), one floor plan (`src/world.js`) and the seat data; each brings its
