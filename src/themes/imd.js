@@ -4,7 +4,6 @@
 import { W, H, FLIGHTS, ROOMS, WINDOWS, skyPhase } from '../world.js';
 import { MAPPINGS } from '../mapping.js';
 import { IMD_SPOTS, THINGS } from './imd-layout.js';
-import { drawFace, drawFist } from './imd-face.js';
 
 const S = 3;
 const C = {
@@ -413,49 +412,9 @@ export const imd = {
       const head = m.pose === 'sleep' ? [76, 97] : ['tvsit', 'nap'].includes(m.pose) ? [THINGS.chair.x + 13, THINGS.chair.y - 14] : [m.x, m.y - PH + 2];
       bubble(g, head[0], head[1], m.icon, now);
     }
-    if (s.closeup) closeup(g, s.closeup, now);
-  },
-
-  // the small front-facing portrait beside the house: his face, and what he wears for what he is doing
-  portrait(g, house, now, size) {
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, size, size);
-    g.fillStyle = C.paper; g.fillRect(0, 0, size, size);
-    dots(g, 0, 0, size, size, 6, 0.5, 0.12);
-    if (!house) return null;
-    const p = portraitFor(house);
-    const blink = (now % 4200) < 140;
-    drawFace(g, size * 0.12, size * 0.16, size * 0.76, { ...p, blink });
-    return p.caption;
+    if (s.closeup) closeup(g, this, s.closeup, now);
   },
 };
-
-// what he wears for each activity (the owner's reference pictures, 2026-10-24), and which actions belong to which
-const ACTIVITY_LOOK = {
-  computer: [['headset'], 'At the machine wall'], cook: [['chef'], 'Cooking'], book: [['glasses', 'pencil'], 'Researching'],
-  tv: [[], 'Watching TV'], piano: [['headphones'], 'Playing the piano'], easel: [['beret'], 'Painting'], telescope: [[], 'At the telescope'],
-};
-const ACTION_ACTIVITY = { type: 'computer', letter: 'computer', install: 'computer', research: 'book', book: 'book', paint: 'easel',
-  cook: 'cook', tv: 'tv', piano: 'piano', telescope: 'telescope' };
-
-function portraitFor(house) {
-  const s = house.state, m = house.man, a = s.action;
-  if (s.away) return { mood: 'calm', wear: ['sunglasses'], caption: 'Out: his owner paused the seat.' };
-  if (s.asleep || m.pose === 'sleep') return { mood: 'sleep', wear: ['nightcap'], caption: 'Asleep.' };
-  if (s.closeup) return { mood: 'urgent', wear: [], caption: 'Knocking: the seat needs an update.' };
-  if (s.smoke || a === 'fan') return { mood: 'worried', wear: [], caption: 'A run failed.' };
-  if (a === 'dance' || a === 'hang') return { mood: 'happy', wear: ['sunglasses'], caption: 'Accepted.' };
-  if (a === 'sad') return { mood: 'worried', wear: [], caption: 'Rejected.' };
-  const act = ACTION_ACTIVITY[a] || (s.working ? house.workKind : null);
-  const look = ACTIVITY_LOOK[act];
-  if (look) {
-    const [wear, caption] = look, here = ACTION_ACTIVITY[a] === act;
-    return { mood: act === 'telescope' ? 'up' : 'calm', wear, look: act === 'tv' ? [-0.6, 0] : [0, 0],
-      caption: a === 'book' ? 'Reading a book.' : here ? caption + '.' : 'On his way: ' + caption.toLowerCase() + '.' };
-  }
-  if (a === 'nap') return { mood: 'sleep', wear: [], caption: 'Napping in the armchair.' };
-  return { mood: 'calm', wear: [], caption: 'At home.' };
-}
 
 function drawPepe(g, th, m, s, now) {
   const img = th.pepe;
@@ -718,19 +677,19 @@ function bubble(g, x, y, icon, now) {
   }
 }
 
-function closeup(g, c, now) {
+// at the glass: his sprite from the front, big, pressed to the screen; each knock bumps him towards you
+function closeup(g, th, c, now) {
   const k = c.k == null ? 1 : c.k, ease = 1 - (1 - k) * (1 - k);
   g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(0, 0, W, H);
-  const size = 170, x = W / 2 - size / 2, top = 330 - ease * 200;
-  const mood = c.phase === 'knock' ? 'urgent' : c.ack ? 'happy' : 'calm';
-  drawFace(g, x, top, size, { mood, wear: [], blink: !c.hit && (now % 3600) < 120 });
-  if (c.phase === 'knock' || c.phase === 'wait') {
-    const near = c.hit ? 5 : 0;
-    drawFist(g, x + size * 0.86 - near, top - 18 - near, 52 + near * 2);
-    if (c.hit) {
-      const hx = x + size * 0.86 + 26, hy = top + 4;
-      g.lineWidth = 2; g.strokeStyle = '#ffffff';
-      for (const [dx, dy] of [[-34, -10], [30, -16], [-30, 22], [32, 16], [0, -36]]) { g.beginPath(); g.moveTo(hx + dx * 0.6, hy + dy * 0.6); g.lineTo(hx + dx, hy + dy); g.stroke(); }
+  if (!th.pepe) return;
+  const name = c.phase === 'knock' ? (c.hit ? 'front_lookup' : 'front_stand') : c.phase === 'wait' && !c.ack ? 'front_scratch' : 'front_stand';
+  const grow = c.hit ? 1.06 : 1, h = 300 * grow, w = h * 240 / 284, top = 330 - ease * 250 - (grow - 1) * 120;
+  g.drawImage(th.pepe, PI[name] * 240, 0, 240, 284, W / 2 - w / 2, top, w, h);
+  if (c.hit) {
+    const hx = W / 2, hy = top + 60;
+    g.lineWidth = 2.2; g.strokeStyle = '#ffffff';
+    for (const [dx, dy] of [[-110, -30], [110, -36], [-120, 30], [118, 26], [0, -80], [-70, -70], [72, -66]]) {
+      g.beginPath(); g.moveTo(hx + dx * 0.78, hy + dy * 0.78); g.lineTo(hx + dx, hy + dy); g.stroke();
     }
   }
   g.fillStyle = 'rgba(255,255,255,0.06)';

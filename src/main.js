@@ -9,8 +9,7 @@ import { THEMES, DEFAULT_THEME } from './themes/index.js';
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
 let g = canvas.getContext('2d');
-const portraitCanvas = $('portrait-canvas'), pg = portraitCanvas.getContext('2d'), PORTRAIT = portraitCanvas.width;
-let theme = THEMES[store('seathouse:theme')] || THEMES[DEFAULT_THEME], lastCaption = null;
+let theme = THEMES[store('seathouse:theme')] || THEMES[DEFAULT_THEME];
 
 const sound = new Sound();
 let house = null, seatSeed = 4242, feed = null, seatId = null, mode = null, tick = 0;
@@ -34,10 +33,6 @@ function draw() {
   theme.draw(g, house, tick);
   const c = house && house.state.closeup;
   canvas.style.transform = c && c.hit ? `translate(${tick % 2 ? 2 : -2}px, ${tick % 3 ? 1 : 0}px)` : '';
-  if (theme.portrait && tick % 3 === 0) {
-    const caption = theme.portrait(pg, house, performance.now(), PORTRAIT);
-    if (caption !== lastCaption) { $('portrait-cap').textContent = caption || ''; lastCaption = caption; }
-  }
 }
 
 function fit() {
@@ -54,8 +49,6 @@ function applyTheme(id) {
   g = canvas.getContext('2d');
   if (house) { house.setTheme(theme); theme.setSeed(seatSeed); }
   for (const b of document.querySelectorAll('[data-look-btn]')) b.setAttribute('aria-pressed', String(b.dataset.lookBtn === theme.id));
-  $('portrait').hidden = !theme.portrait;
-  lastCaption = null;
   renderLegend();
   fit();
 }

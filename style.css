@@ -111,9 +111,6 @@ code { font-family: var(--type); font-size: 0.95em; }
 
 .looks { display: inline-flex; gap: 0; }
 .looks button + button { border-left-width: 0; }
-.portrait { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: end; }
-.portrait canvas { width: 132px; height: 132px; display: block; }
-.portrait figcaption { color: var(--muted); font-size: 0.9rem; }
 
 /* The IMD look (2026-10-24): imd.fun's black page, IBM Plex Mono, outlined square controls, a terminal for the diary. */
 html[data-look="imd"] {
@@ -155,7 +152,6 @@ html[data-look="imd"] .diary li:first-child time, html[data-look="imd"] .diary l
 html[data-look="imd"] .diary li.empty::before { content: none; }
 html[data-look="imd"] .counters dl div { background: var(--term); border-left: 2px solid var(--lamp); }
 html[data-look="imd"] .counters dd { font-size: 1.15rem; }
-html[data-look="imd"] .portrait canvas { border: 1.5px solid var(--ink); }
 html[data-look="imd"] .letter, html[data-look="imd"] .knock { border: 1.5px solid var(--ink); box-shadow: none; }
 html[data-look="imd"] .knock { border-color: var(--lamp); }
 html[data-look="imd"] .knock code { background: #e6e6e6; }

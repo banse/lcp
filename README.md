@@ -23,10 +23,8 @@ and is remembered per browser.
   IMD project's art, used with IMD's agreement of 2026-10-24) with imd.fun's moves: he looks up, scratches his head, shuffles, turns to the front,
   cheers; the dog naps (breathing), glances, tilts, wags and walks. He stands with his back to us at the thing he
   works on, as on imd.fun; in the armchair only his head shows over the back, in bed the back of his head on the
-  pillow. A portrait beside the house shows his face from the front (our own vector drawing, `src/themes/imd-face.js`)
-  with what he wears for what he does: a headset at the machine wall, headphones at the piano, glasses and a pencil
-  for research, a beret at the easel, a chef's hat at the stove, sunglasses for good news, a nightcap asleep. The
-  close-up at the glass uses the same face and a green fist.
+  pillow. When he knocks on the glass, his front-facing sprite fills the screen and bumps towards you with each
+  knock.
 - **Pixel** (parked, `src/themes/pixel.js`): the 480 x 320 pixel house in the original game's look.
 
 ## Run
