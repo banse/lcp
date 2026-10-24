@@ -86,5 +86,14 @@ A browser wallet only injects into http pages, so serve it rather than opening t
 - The demo waits for him: each step comes when he has done the last (reached the place and worked there about 4 s,
   or finished the scene), with a 2-minute cap. It keeps its own time of day: day at the start, dusk and then night
   when he goes to bed, dawn and then day when he wakes; a live seat follows the visitor's clock again.
+- Kinds of work (2026-10-24, from imd.fun/docs, the live `/skills` catalog and 200 jobs; notes in aidude
+  `ideas/evidence/seat-house-life-sim/2026-10-24-imd-action-types.md`): a task's category comes from its job's
+  template (`skill:token-logo`, `research`, `audit`, …) when the relay reads the job, else its step key, else its
+  step's role. Seven categories joined the first eight: reviews and audits (magnifying glass at the bedroom writing
+  desk), tests (test tubes on the kitchen counter), putting it together or fixing it (workbench on the top landing),
+  docs (typewriter), fuzz runs (pinball), planning (whiteboard), indexers (filing cabinet). The IMD look maps them; the
+  parked LCP look has no stations for them and shows them like the launch they belong to. Also: he cheers when a job
+  he worked on is done and scratches his head when it is blocked; fireworks go up when a launch he worked on goes
+  live; the mantel clock rings when a schedule opened his job. The relay adds `/proxy/scheduled` and step roles.
 - Console helpers: `__house()`, `__live`, `__theme()`, `__demo` (`__live.onEvent({type: 'pause'})` plays an event through the page).
 - Fonts come from Google Fonts here; a swarm-hosted build must bundle them (the host allows same-origin scripts only).

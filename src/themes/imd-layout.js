@@ -16,6 +16,13 @@ export const IMD_SPOTS = {
   phone: { floor: 0, x: 281, face: 1 },
   fire: { floor: 0, x: 322, face: 1 },
   fridge: { floor: 0, x: 177, face: 1 },
+  // added 2026-10-24 for the owner's new categories
+  desk2: { floor: 2, x: 148, face: 1 },        // the writing desk under the bedroom window: typewriter, magnifier
+  lab: { floor: 0, x: 100, face: 1 },          // test tubes on the kitchen counter
+  cabinet: { floor: 2, x: 387, face: 1 },      // the top-floor landing: filing cabinet, workbench, whiteboard
+  workbench: { floor: 2, x: 419, face: 1 },
+  whiteboard: { floor: 2, x: 419, face: 1 },
+  pinball: { floor: 0, x: 214, face: 1 },      // the living room, where the floor lamp stood
 };
 
 // where the things are drawn (world units), shared by the static layer and the props drawn every frame
@@ -30,4 +37,10 @@ export const THINGS = {
   fire: { x: 310, y: 262, w: 24, h: 28 },
   stove: { x: 114, y: 262, w: 24, h: 28 },
   fridge: { x: 162, y: 230, w: 30, h: 60 },
+  desk2: { x: 137, y: 108, w: 23 },              // top at y; the typewriter on its left half
+  rack: { x: 93, y: 252, w: 17 },                // test-tube rack on the counter (counter top y 261)
+  cabinet: { x: 378, y: 98, w: 18, h: 28 },
+  bench: { x: 402, y: 108, w: 34 },
+  board: { x: 404, y: 62, w: 30, h: 28 },
+  pinball: { x: 203, y: 236, w: 22 },            // backbox top at y; the table below it
 };

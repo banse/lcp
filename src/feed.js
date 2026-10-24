@@ -21,28 +21,56 @@ function liveTask(events, id) {
   return { nodeKey: e.step || e.nodeKey || '', role: e.role || '', launch: e.launch || null, objective: e.objective || '', jobId: e.jobId || null };
 }
 
-// Which kind of work a task is. What he does for each category is the theme's mapping (mapping.js).
+// Which kind of work a task is: its job's skill or template when the job record says (local relay), else its step key,
+// else its step's role. What he does for each category is the look's mapping (mapping.js). base = token launch work or
+// not, for a look that has no activity for the category.
 const TOKEN_LAUNCHES = ['custom_token', 'evm_project', 'univ4_hook'];
 // launch steps carry their launch kind only once posted (measured on 12 seats, 2026-10-24: 9 of 11 contract builds
 // were token launches)
 const LAUNCH_STEP = /contract_project|foundry|manifest|^audit_|deploy/;
-export function taskCategory(t) {
-  if (!t) return null;
-  const k = (t.nodeKey || '').toLowerCase(), o = (t.objective || '').toLowerCase();
-  if (/oracle/.test(k)) return 'oracle';
-  if (/research/.test(k)) return 'research';
-  if (/video/.test(k) || /\bvideo\b/.test(o.slice(0, 60))) return 'video';
-  if (/audio|music|sound|song|voice|podcast/.test(k) || /\b(audio|music|song|soundtrack|podcast)\b/.test(o.slice(0, 60))) return 'audio';
-  if (/website|site|frontend|design_critic|landing/.test(k)) return 'website';
-  if (/image|illustrat|artwork|logo/.test(k)) return 'image';
-  if (TOKEN_LAUNCHES.includes(t.launch)) return 'token';
-  return 'other';
+// the live skill catalog (api.imd.fun/skills, 2026-10-24) by what he does for it
+const SKILL_CATEGORY = {
+  'oracle-assess': 'oracle', 'research-report': 'research', 'create-image': 'image', 'token-logo': 'image',
+  'create-audio': 'audio', 'create-video': 'video', 'build-website': 'website', 'frontend-for-contract': 'website',
+  'implement-component': 'website', 'import-site': 'website', 'site-content-check': 'review', 'design-critic': 'review',
+  'adversarial-review': 'review', 'audit-imported-code': 'review', 'audit-specialist': 'review', 'audit-judge': 'review',
+  'write-foundry-tests': 'tests', 'gas-and-size-report': 'tests', 'integrate-project': 'assemble', 'fix-findings': 'assemble',
+  'refine-project': 'assemble', 'adapt-contract-project': 'assemble', 'deploy-script': 'assemble',
+  'write-readme-and-docs': 'docs', 'build-ponder-indexer': 'indexer', 'workflow-planner': 'planning',
+};
+const TEMPLATE_CATEGORY = { research: 'research', audit: 'review', fuzz: 'fuzz' };
+const ROLE_CATEGORY = { review: 'review', tests: 'tests', integrate: 'assemble' };
+// step keys: the plane's own and a requester's free words in a dag; the first match wins (site_content_check is a review)
+const KEY_CATEGORY = [
+  [/audit|review|critic|adversarial|check/, 'review'], [/website|site|frontend|landing|component/, 'website'],
+  [/image|illustrat|artwork|logo/, 'image'], [/test|gas_/, 'tests'], [/manifest|integrat|fix|refine|adapt|deploy/, 'assemble'],
+  [/readme|docs?$|documentation/, 'docs'], [/fuzz/, 'fuzz'], [/ponder|indexer/, 'indexer'], [/plan/, 'planning'],
+];
+
+export function taskBase(t, job) {
+  return TOKEN_LAUNCHES.includes((t && t.launch) || (job && job.launch)) ? 'token' : 'other';
 }
 
-export function describeTask(t) {
-  const c = taskCategory(t);
+export function taskCategory(t, job) {
+  if (!t) return null;
+  const k = (t.nodeKey || '').toLowerCase(), o = (t.objective || '').toLowerCase(), tpl = (job && job.template) || '';
+  if (tpl.startsWith('skill:') && SKILL_CATEGORY[tpl.slice(6)]) return SKILL_CATEGORY[tpl.slice(6)];
+  if (TEMPLATE_CATEGORY[tpl]) return TEMPLATE_CATEGORY[tpl];
+  if (/oracle/.test(k)) return 'oracle';
+  if (/research|panel|prior_art/.test(k)) return 'research';
+  if (/video/.test(k) || /\bvideo\b/.test(o.slice(0, 60))) return 'video';
+  if (/audio|music|sound|song|voice|podcast/.test(k) || /\b(audio|music|song|soundtrack|podcast)\b/.test(o.slice(0, 60))) return 'audio';
+  for (const [re, c] of KEY_CATEGORY) if (re.test(k)) return c;
+  const role = t.role || (job && job.nodes && job.nodes[t.nodeKey]);
+  if (ROLE_CATEGORY[role]) return ROLE_CATEGORY[role];
+  return taskBase(t, job);
+}
+
+export function describeTask(t, job) {
+  const c = taskCategory(t, job);
   if (!t) return '';
-  if (c === 'other' && t.launch) return 'a launch task (' + t.launch + ')';
+  const launch = t.launch || (job && job.launch);
+  if (c === 'other' && launch) return 'a launch task (' + launch + ')';
   return CATEGORY_SAY[c];
 }
 
@@ -84,23 +112,31 @@ export function updateStatus(daemonVersion, releases, now = Date.now()) {
   return { current: daemonVersion, latest: latest.version + '+' + latest.sha.slice(0, 8), behind, latestAgeH, needs };
 }
 
-// a job's launch kind, through the local relay (/jobs has no CORS); null = no launch, undefined = not readable here
-const jobKinds = new Map();
-async function jobLaunch(jobId) {
+// a job's template, launch kind, step roles and oracle question, through the local relay (/jobs has no CORS);
+// undefined = not readable from here
+const jobInfos = new Map();
+async function jobInfo(jobId) {
   if (!jobId) return undefined;
-  if (jobKinds.has(jobId)) return jobKinds.get(jobId);
+  if (jobInfos.has(jobId)) return jobInfos.get(jobId);
   try {
     const r = await fetch('/proxy/jobs/' + jobId, { cache: 'no-store' });
     if (!r.ok) return undefined;
-    const kind = (await r.json()).launch || null;
-    jobKinds.set(jobId, kind);
-    return kind;
+    const info = await r.json();
+    jobInfos.set(jobId, info);
+    return info;
   } catch (e) { return undefined; }
 }
 
-function launchWork(t, kind) {
-  const isToken = TOKEN_LAUNCHES.includes(kind);
-  return { category: isToken ? 'token' : 'other', label: isToken ? CATEGORY_SAY.token : 'a launch task (' + kind + ')', step: t.nodeKey };
+// jobs and oracle questions that schedules opened (relay /proxy/scheduled), read at most every 10 minutes
+let scheduled = { at: 0, ids: new Set() };
+async function scheduledIds() {
+  if (Date.now() - scheduled.at < 10 * 60000) return scheduled.ids;
+  scheduled.at = Date.now();
+  try {
+    const r = await fetch('/proxy/scheduled', { cache: 'no-store' });
+    if (r.ok) scheduled.ids = new Set((await r.json()).ids || []);
+  } catch (e) { /* no relay */ }
+  return scheduled.ids;
 }
 
 async function seatDetail(id) {
@@ -123,6 +159,7 @@ export class LiveFeed {
     this.seat = null; this.prev = null; this.swarm = null; this.timer = null; this.oracleTimer = null;
     this.seenOracle = null; this.fails = 0; this.leftAt = null;
     this.detail = null; this.update = null; this.detailTimer = null; this.lastDetailAt = 0;
+    this.myJobs = new Set(); this.seenDone = new Set(); this.doneReady = false;
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && this.seat != null) this.poll(); });
   }
 
@@ -135,6 +172,7 @@ export class LiveFeed {
 
   setSeat(id) {
     this.seat = id; this.prev = null; this.seenOracle = null; this.leftAt = null; this.detail = null; this.update = null;
+    this.myJobs = new Set(); this.seenDone = new Set(); this.doneReady = false;
     clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer);
     const first = this.checkDetail(true);
     Promise.race([first, new Promise((r) => setTimeout(r, 3000))]).then(() => { if (this.seat === id) this.poll(); });
@@ -143,32 +181,62 @@ export class LiveFeed {
 
   stop() { this.seat = null; clearTimeout(this.timer); clearTimeout(this.oracleTimer); clearTimeout(this.detailTimer); }
 
-  // the task he starts: the live event if it names the step, else his usual kind of work. A launch step's event names
-  // the job but not the launch kind: the job record says (relay, see refineWork); until then, or without the relay,
-  // the seat's recent launches decide.
+  // the task he starts: the live event if it names the step, else his usual kind of work. The event names the step and
+  // the job; the job record (relay) adds the template, the launch kind and the role (see refineWork). Until it is read,
+  // or without the relay, a launch step's kind follows the seat's recent launches.
   guessWork(events) {
     const t = liveTask(events, this.seat);
     if (t && t.nodeKey) {
-      if (LAUNCH_STEP.test(t.nodeKey) && !t.launch && jobKinds.get(t.jobId)) return { ...launchWork(t, jobKinds.get(t.jobId)), jobId: t.jobId };
-      if (LAUNCH_STEP.test(t.nodeKey) && !t.launch) {
+      const job = jobInfos.get(t.jobId);
+      const w = { category: taskCategory(t, job), base: taskBase(t, job), label: describeTask(t, job), step: t.nodeKey,
+        role: t.role, jobId: t.jobId, refine: !job && !!t.jobId };
+      if (!job && !t.launch && LAUNCH_STEP.test(t.nodeKey)) {
         const kinds = ((this.detail && this.detail.recent) || []).map((r) => r.launch).filter(Boolean).slice(0, 10);
         const token = kinds.filter((k) => TOKEN_LAUNCHES.includes(k)).length;
-        const isToken = !kinds.length || token * 2 >= kinds.length;
-        return { category: isToken ? 'token' : 'other', label: isToken ? CATEGORY_SAY.token : 'a launch task', step: t.nodeKey, guess: true, jobId: t.jobId, refine: true };
+        w.base = !kinds.length || token * 2 >= kinds.length ? 'token' : 'other';
+        w.guess = true;
+        if (w.category === 'token' || w.category === 'other') { w.category = w.base; w.label = w.base === 'token' ? CATEGORY_SAY.token : 'a launch task'; }
       }
-      return { category: taskCategory(t), label: describeTask(t), step: t.nodeKey };
+      return w;
     }
     const usual = usualCategory(this.detail && this.detail.recent);
-    return usual ? { category: usual, label: CATEGORY_SAY[usual], guess: true } : { category: 'other', label: 'a task', guess: true };
+    return usual ? { category: usual, base: usual === 'token' ? 'token' : 'other', label: CATEGORY_SAY[usual], guess: true }
+      : { category: 'other', base: 'other', label: 'a task', guess: true };
   }
 
-  // the job record names the launch kind: if it differs from the guess, he moves to the right place
+  // the job record is read: if it changes the category or the launch kind, he moves to the right place
   async refineWork(w) {
     if (!w || !w.refine || !w.jobId) return;
-    const id = this.seat, kind = await jobLaunch(w.jobId);
-    if (!kind || id !== this.seat) return;
-    const sure = launchWork({ nodeKey: w.step }, kind);
-    if (sure.category !== w.category) this.onEvent({ type: 'workkind', ...sure });
+    const id = this.seat, job = await jobInfo(w.jobId);
+    if (!job || id !== this.seat) return;
+    const t = { nodeKey: w.step, role: w.role, jobId: w.jobId };
+    const sure = { category: taskCategory(t, job), base: taskBase(t, job), label: describeTask(t, job), step: w.step };
+    if (sure.category !== w.category || sure.base !== w.base) this.onEvent({ type: 'workkind', ...sure });
+  }
+
+  // a schedule opened the job (or the oracle question) he starts: his alarm clock rings
+  async alarmFor(w) {
+    if (!w || !w.jobId) return;
+    const id = this.seat, ids = await scheduledIds(), job = jobInfos.get(w.jobId) || await jobInfo(w.jobId);
+    if (id === this.seat && (ids.has(w.jobId) || (job && ids.has(job.oracleRequestId)))) this.onEvent({ type: 'alarm' });
+  }
+
+  // a job this seat worked on is done: completed (and a launch goes live) or blocked. Only news after the first reading.
+  watchDone(events) {
+    for (const e of events || []) if (String(e.tokenId) === String(this.seat) && e.jobId) this.myJobs.add(e.jobId);
+    for (const t of (this.detail && this.detail.recent) || []) if (t.jobId) this.myJobs.add(t.jobId);
+    const first = !this.doneReady;
+    this.doneReady = true;
+    for (const e of events || []) {
+      if (e.kind !== 'done' || !e.jobId || this.seenDone.has(e.jobId + e.at)) continue;
+      this.seenDone.add(e.jobId + e.at);
+      if (first || !this.myJobs.has(e.jobId)) continue;
+      this.onEvent({ type: 'jobdone', state: e.state, jobId: e.jobId });
+      if (e.state !== 'completed') continue;
+      const rec = ((this.detail && this.detail.recent) || []).find((t) => t.jobId === e.jobId);
+      if (rec && rec.launch) this.onEvent({ type: 'launched', kind: rec.launch });
+      else jobInfo(e.jobId).then((job) => { if (job && job.launch && this.seat != null) this.onEvent({ type: 'launched', kind: job.launch }); });
+    }
   }
 
   // the seat record (online, worker version) through the local relay, and the newest worker release
@@ -185,7 +253,8 @@ export class LiveFeed {
     const before = this.detail, upd = det ? updateStatus(det.daemonVersion, rel) : null;
     const newest = det && det.recent && det.recent[0], prevNewest = before && before.recent && before.recent[0];
     if (!first && newest && (!prevNewest || newest.submittedAt !== prevNewest.submittedAt || newest.jobId !== prevNewest.jobId)) {
-      this.onEvent({ type: 'submitted', task: newest, category: taskCategory(newest), label: describeTask(newest) });
+      const job = jobInfos.get(newest.jobId);
+      this.onEvent({ type: 'submitted', task: newest, category: taskCategory(newest, job), base: taskBase(newest, job), label: describeTask(newest, job) });
     }
     this.detail = det; this.releases = rel;
     if (!first && before && det && before.daemonVersion && det.daemonVersion && before.daemonVersion !== det.daemonVersion) {
@@ -224,20 +293,22 @@ export class LiveFeed {
       const status = { seat: id, data: cur, asleep, verifierDown, idleHours, at: new Date(), live: true, health: sw.health,
         online, paused, version: this.detail ? this.detail.daemonVersion : null, update: this.update, detailRead: !!this.detail };
       if (!this.prev) {
-        if (cur && cur.working) {                       // a launch step: wait briefly for its job's launch kind
+        if (cur && cur.working) {                       // wait briefly for the job record: template, launch kind, roles
           const t = liveTask(sw.events, id);
-          if (t && t.jobId && LAUNCH_STEP.test(t.nodeKey)) await Promise.race([jobLaunch(t.jobId), new Promise((r) => setTimeout(r, 2500))]);
+          if (t && t.jobId) await Promise.race([jobInfo(t.jobId), new Promise((r) => setTimeout(r, 2500))]);
           if (id !== this.seat) return;
         }
         const w = cur && cur.working ? this.guessWork(sw.events) : null;
         this.onEvent({ type: 'init', seat: id, data: cur, asleep, working: !!(cur && cur.working),
           accepted: cur ? cur.accepted : 0, verifierDown, paused, update: this.update, ...(w || {}) });
         this.refineWork(w);
+        this.alarmFor(w);
       } else {
         const posted = cur && this.prev.data && cur.attempts !== this.prev.data.attempts;
         if (cur && (posted || (Date.now() - this.lastDetailAt > 2 * 60000 && prevChanged(this.prev.data, cur)))) setTimeout(() => this.checkDetail(), posted ? 1500 : 0);
         this.diff(this.prev, cur, asleep, verifierDown, sw.events, paused);
       }
+      this.watchDone(sw.events);
       this.prev = { data: cur, asleep, verifierDown, paused };
       this.onStatus(status);
     } catch (err) {
@@ -252,7 +323,7 @@ export class LiveFeed {
     const p = prev.data || {}, c = cur || {};
     const d = (k) => (c[k] || 0) - (p[k] || 0);
     if (prev.asleep && !asleep) this.onEvent({ type: 'wake' });
-    if (!p.working && c.working) { const w = this.guessWork(events); this.onEvent({ type: 'work', ...w }); this.refineWork(w); }
+    if (!p.working && c.working) { const w = this.guessWork(events); this.onEvent({ type: 'work', ...w }); this.refineWork(w); this.alarmFor(w); }
     if (p.working && !c.working) this.onEvent({ type: 'workdone' });
     if (d('attempts') > 0) this.onEvent({ type: 'post', n: d('attempts') });
     if (d('accepted') > 0) this.onEvent({ type: 'accepted', n: d('accepted') });
@@ -282,6 +353,7 @@ export class LiveFeed {
         const det = await (await fetch(API + '/oracle/requests/' + q.id, { cache: 'no-store' })).json();
         const req = det.request || det;
         if ((req.members || []).some((m) => String(m.tokenId) === String(id)) && id === this.seat) {
+          if ((await scheduledIds()).has(q.id)) this.onEvent({ type: 'alarm' });
           this.onEvent({ type: 'oracle', request: q.id });
         }
       }
@@ -305,10 +377,11 @@ export class DemoFeed {
     this.stop();
     const D = this.data, h = () => this.house();
     const status = (asleep = false, verifierDown = false, paused = false) => this.onStatus({ seat: 'demo', data: { ...D }, asleep, verifierDown, paused, at: new Date(), live: false });
-    const kind = (category, label) => this.onEvent({ type: 'workkind', category, label });
+    const kind = (category, label, base = 'token') => this.onEvent({ type: 'workkind', category, base, label });
     // waits, made when their step starts: true once the scene is over
     const held = (test, s) => { let since = null; return () => { const x = h(); if (x && test(x)) { since = since ?? Date.now(); return Date.now() - since >= s * 1000; } since = null; return false; }; };
-    const doing = (action, s = 4) => held((x) => x.state.action === action, s);
+    // at the station of the work in hand (whatever the look maps it to) for s seconds
+    const working = (s = 4) => held((x) => !!x.current && x.current.name === 'work' && x.state.atStation === x.workKind && !!x.state.action, s);
     const finished = (name) => () => { const x = h(); return !!x && !x.queue.some((q) => q.name === name) && !(x.current && x.current.name === name); };
     const after = (s) => { const t = Date.now() + s * 1000; return () => Date.now() >= t; };
     const phase = (p) => this.onEvent({ type: 'phase', phase: p });
@@ -316,15 +389,25 @@ export class DemoFeed {
     const steps = [                                  // [what happens, wait until, then hold seconds]
       [() => { phase('day'); this.onEvent({ type: 'init', seat: 'demo', data: D, asleep: false, working: false, accepted: D.accepted, verifierDown: false, letter: true }); status(); }, () => finished('letter'), 2],
       [() => { D.queued = 1; this.onEvent({ type: 'phone' }); status(); }, () => finished('phone'), 1],
-      [() => { D.queued = 0; D.working = true; this.onEvent({ type: 'work', category: 'token', label: 'token launch work' }); status(); }, () => doing('type'), 0],
+      [() => { D.queued = 0; D.working = true; this.onEvent({ type: 'work', category: 'token', base: 'token', label: 'token launch work' }); status(); }, () => working(), 0],
       [() => { D.attempts++; this.onEvent({ type: 'post', n: 1 }); this.onEvent({ type: 'submitted', category: 'token', label: 'token launch work', task: { nodeKey: 'build_contract_project' } }); status(); }, () => finished('post'), 1],
       [() => { D.accepted++; this.onEvent({ type: 'accepted', n: 1 }); status(); }, () => finished('mail'), 1],
-      [() => { kind('website', 'a website'); status(); }, () => doing('cook'), 0],
-      [() => { kind('research', 'a research task'); status(); }, () => doing('research'), 0],
-      [() => { kind('video', 'a video task'); status(); }, () => doing('tv'), 0],
-      [() => { kind('audio', 'an audio task'); status(); }, () => doing('piano'), 0],
-      [() => { kind('image', 'an image task'); status(); }, () => doing('paint'), 0],
-      [() => { kind('oracle', 'an oracle question'); status(); }, () => doing('telescope'), 0],
+      [() => { kind('website', 'a website', 'other'); status(); }, () => working(), 0],
+      [() => { kind('research', 'a research task', 'other'); status(); }, () => working(), 0],
+      [() => { kind('video', 'a video task', 'other'); status(); }, () => working(), 0],
+      [() => { kind('audio', 'an audio task', 'other'); status(); }, () => working(), 0],
+      [() => { kind('image', 'an image task', 'other'); status(); }, () => working(), 0],
+      [() => { kind('oracle', 'an oracle question', 'other'); status(); }, () => working(), 0],
+      [() => { kind('review', 'a review'); status(); }, () => working(), 0],
+      [() => { kind('tests', 'tests'); status(); }, () => working(), 0],
+      [() => { kind('assemble', 'assembly work'); status(); }, () => working(), 0],
+      [() => { kind('docs', 'docs'); status(); }, () => working(), 0],
+      [() => { kind('fuzz', 'a fuzz run'); status(); }, () => working(), 0],
+      [() => { kind('planning', 'planning', 'other'); status(); }, () => working(), 0],
+      [() => { kind('indexer', 'an indexer', 'other'); status(); }, () => working(), 0],
+      [() => { this.onEvent({ type: 'jobdone', state: 'completed' }); this.onEvent({ type: 'launched', kind: 'custom_token' }); status(); }, () => finished('jobdone'), 3],
+      [() => { this.onEvent({ type: 'alarm' }); status(); }, () => after(4), 0],
+      [() => { this.onEvent({ type: 'jobdone', state: 'blocked' }); status(); }, () => finished('jobdone'), 1],
       [() => { D.working = false; this.onEvent({ type: 'workdone' }); D.failed++; this.onEvent({ type: 'failed', n: 1 }); status(); }, () => finished('smoke'), 2],
       [() => { D.rejected++; this.onEvent({ type: 'rejected', n: 1 }); status(); }, () => finished('mail'), 2],
       // the page knocks for an update 9 s after it arrives: wait for the parcel and the knock to be over

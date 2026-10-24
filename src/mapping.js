@@ -12,12 +12,21 @@ export const CATEGORIES = {
   audio: 'Audio and music',
   image: 'Images and logos',
   oracle: 'Oracle questions, or a seat on an oracle panel',
+  review: 'Reviews and audits: the audit specialists and judge of a launch, code reviews, site checks, design critique',
+  tests: 'Tests: Foundry tests, gas and size reports',
+  assemble: 'Putting it together or fixing it: a launch\'s manifest, joining steps, fixing findings, refining, deploy scripts',
+  docs: 'Docs: READMEs and documentation',
+  fuzz: 'Fuzz runs',
+  planning: 'Planning a workflow',
+  indexer: 'Data indexers (Ponder)',
 };
 
 // how the diary names a task of each category
 export const CATEGORY_SAY = {
   token: 'token launch work', website: 'a website', other: 'a task', research: 'a research task',
   video: 'a video task', audio: 'an audio task', image: 'an image task', oracle: 'an oracle question',
+  review: 'a review', tests: 'tests', assemble: 'assembly work', docs: 'docs', fuzz: 'a fuzz run', planning: 'planning',
+  indexer: 'an indexer',
 };
 
 const OWNER_2026_10_24 = {
@@ -25,9 +34,13 @@ const OWNER_2026_10_24 = {
   oracle: 'telescope',
 };
 
+// A look that has no activity for a category (the parked LCP look has none for the seven added on 2026-10-24) shows it
+// like the launch the task belongs to: token launch work, or not (House.activityFor).
 export const MAPPINGS = {
   pixel: { ...OWNER_2026_10_24 },
-  imd: { ...OWNER_2026_10_24 },
+  imd: { ...OWNER_2026_10_24, review: 'magnifier', tests: 'lab', assemble: 'workbench', docs: 'typewriter', fuzz: 'pinball',
+    planning: 'whiteboard', indexer: 'cabinet' },     // the owner took these proposals on 2026-10-24
 };
 
-export const ACTIVITIES = ['computer', 'cook', 'book', 'tv', 'piano', 'easel', 'telescope'];
+export const ACTIVITIES = ['computer', 'cook', 'book', 'tv', 'piano', 'easel', 'telescope', 'magnifier', 'lab', 'workbench',
+  'typewriter', 'pinball', 'whiteboard', 'cabinet'];

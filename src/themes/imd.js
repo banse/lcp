@@ -157,8 +157,6 @@ function furniture(g) {
   box(g, -12, -3, 28, 6, C.paper, 0.7); box(g, 16, -3.8, 4, 7.6, C.paper2, 0.6); box(g, -15, -1.6, 3, 3.2, C.ink, 0); hatch(g, -12, 0, 28, 3, 0.9, 0.5);
   g.restore();
   // ---- living room: lamp, TV cabinet, TV (live glass), phone table, fireplace, rug
-  ln(g, 212, 246, 212, 289, 0.7); g.beginPath(); g.moveTo(206, 246); g.lineTo(218, 246); g.lineTo(215.5, 237); g.lineTo(208.5, 237); g.closePath(); g.fillStyle = C.paper; g.fill(); g.lineWidth = 0.6; g.strokeStyle = C.ink; g.stroke();
-  g.beginPath(); g.ellipse(212, 289.4, 4, 1, 0, 0, Math.PI * 2); g.fillStyle = C.ink; g.fill();
   const tv = THINGS.tv;
   box(g, tv.x - 3, tv.y + tv.h, tv.w + 6, 290 - tv.y - tv.h, C.paper, 0.6); hatch(g, tv.x - 3, tv.y + tv.h, tv.w + 6, 290 - tv.y - tv.h, 1.2, 0.3);
   rbox(g, tv.x, tv.y, tv.w, tv.h, 2, C.paper2, 0.8);
@@ -202,10 +200,40 @@ function furniture(g) {
   box(g, 284, 99, 16, 6, C.paper, 0.6); box(g, 290, 105, 4, 21, C.paper, 0.6);
   ln(g, 304, 96, 318, 96, 0.7); box(g, 306, 96, 10, 14, C.paper, 0.5); hatch(g, 306, 96, 10, 14, 1, 0.35);
   box(g, 322, 64, 26, 22, C.paper, 0.7); ln(g, 335, 64, 335, 86, 0.5); disc(g, 333, 75, 0.6, C.ink, 0); disc(g, 337, 75, 0.6, C.ink, 0);
+  // ---- added 2026-10-24: writing desk + typewriter, test tubes, filing cabinet, workbench, whiteboard, pinball
+  newFurniture(g);
   // ---- stairwell: plant, shelf
   rbox(g, 372, 199, 10, 9, [0, 0, 2, 2], C.paper, 0.6); hatch(g, 372, 199, 10, 9, 1, 0.4);
   for (const [x, y, a] of [[377, 192, 0], [373, 194, -0.8], [381, 194, 0.8], [376, 186, -0.3], [379, 187, 0.4]]) { g.save(); g.translate(x, y); g.rotate(a); g.beginPath(); g.ellipse(0, 0, 1.8, 4.5, 0, 0, Math.PI * 2); g.fillStyle = C.paper; g.fill(); g.lineWidth = 0.5; g.strokeStyle = C.ink; g.stroke(); g.restore(); }
   box(g, 400, 236, 28, 1.6, C.ink, 0); box(g, 404, 229, 5, 7, C.paper, 0.5); box(g, 413, 227, 4, 9, C.ink, 0); disc(g, 422, 233, 3, C.paper, 0.5);
+}
+
+function newFurniture(g) {
+  const d = THINGS.desk2;                                                    // bedroom writing desk with a typewriter
+  box(g, d.x, d.y, d.w, 2.4, C.ink, 0); ln(g, d.x + 1.5, d.y + 2, d.x + 1.5, 126, 0.8); ln(g, d.x + d.w - 1.5, d.y + 2, d.x + d.w - 1.5, 126, 0.8);
+  rbox(g, d.x + 2, d.y - 6, 12, 6, [2, 2, 0, 0], C.greyD, 0.5); box(g, d.x + 3.5, d.y - 3, 9, 1.4, C.paper2, 0);
+  box(g, d.x + 4, d.y - 9, 8, 3.4, C.paper, 0.4);
+  const r = THINGS.rack;                                                     // test-tube rack on the kitchen counter
+  box(g, r.x, r.y + 5, r.w, 2, C.greyD, 0); box(g, r.x, r.y + 1, r.w, 1.2, C.greyD, 0);
+  for (let i = 0; i < 4; i++) rbox(g, r.x + 2 + i * 4, r.y - 3, 2.2, 11, [0, 0, 1.1, 1.1], C.paper, 0.4);
+  const c = THINGS.cabinet;                                                  // filing cabinet
+  box(g, c.x, c.y, c.w, c.h, C.paper2, 0.8);
+  for (let i = 0; i < 3; i++) { box(g, c.x + 1.5, c.y + 1.5 + i * 9, c.w - 3, 7.6, C.paper, 0.5); box(g, c.x + c.w / 2 - 2.5, c.y + 4.5 + i * 9, 5, 1.2, C.ink, 0); }
+  const b = THINGS.bench;                                                    // workbench, a vise, tools on the wall
+  box(g, b.x, b.y, b.w, 3, C.wall, 0.7); hatch(g, b.x, b.y, b.w, 3, 0.9, 0.4);
+  ln(g, b.x + 2, b.y + 3, b.x + 2, 126, 0.9); ln(g, b.x + b.w - 2, b.y + 3, b.x + b.w - 2, 126, 0.9); ln(g, b.x + 2, 120, b.x + b.w - 2, 120, 0.5);
+  box(g, b.x + b.w - 9, b.y - 4, 7, 4, C.greyD, 0.4);
+  box(g, b.x + 3, 96, 2, 9, C.ink, 0); box(g, b.x + 1.5, 94, 5, 3, C.greyD, 0);           // hammer
+  ln(g, b.x + 10, 95, b.x + 10, 105, 0.9); disc(g, b.x + 10, 94.5, 1.4, C.paper, 0.5);     // screwdriver
+  ln(g, b.x + 15, 96, b.x + 20, 104, 1); ln(g, b.x + 20, 96, b.x + 15, 104, 1);           // pliers
+  const w = THINGS.board;                                                    // whiteboard
+  box(g, w.x, w.y, w.w, w.h, '#fbfbf9', 0.9); box(g, w.x + 2, w.y + w.h, w.w - 4, 1.6, C.greyD, 0);
+  box(g, w.x + 4, w.y + w.h - 0.8, 4, 1, C.green, 0); box(g, w.x + 10, w.y + w.h - 0.8, 4, 1, C.red, 0);
+  const pb = THINGS.pinball;                                                 // pinball machine: backbox and table
+  rbox(g, pb.x + 1, pb.y, pb.w - 2, 20, 1.5, C.ink, 0); box(g, pb.x + 3, pb.y + 2, pb.w - 6, 13, '#141414', 0.4);
+  text(g, 'TILT', pb.x + pb.w / 2, pb.y + 18.6, 3.2, C.greyL, 600, 'center');
+  box(g, pb.x, pb.y + 20, pb.w, 14, C.paper2, 0.7); hatch(g, pb.x, pb.y + 20, pb.w, 14, 1.2, 0.3);
+  ln(g, pb.x + 2, pb.y + 34, pb.x + 2, 290, 0.9); ln(g, pb.x + pb.w - 2, pb.y + 34, pb.x + pb.w - 2, 290, 0.9);
 }
 
 function armchair(g) {
@@ -348,6 +376,14 @@ function pepeSpec(m, s) {
     case 'readmail': case 'eat': return { base: 'front_stand', moves: ['flook'] };
     case 'phone': case 'pet': case 'carry': return { base: 'side_stand', flip: true };
     case 'water': case 'brush': case 'stoke': return { base: 'stand', moves: ['scratch'] };
+    case 'inspect': return { base: 'stand', moves: ['look', 'scratch'] };
+    case 'typewrite': return { loop: [['stand', 360], ['walk1', 120], ['stand', 120], ['walk2', 120]] };
+    case 'experiment': return { base: 'stand', moves: ['scratch', 'look', 'shuffle'] };
+    case 'hammer': return { loop: [['scratch1', 220], ['scratch2', 160]] };
+    case 'plan': return { base: 'lookup', moves: ['scratch'] };
+    case 'file': return { base: 'stand', moves: ['look'] };
+    case 'pinball': return { loop: [['walk1', 110], ['stand', 110], ['walk2', 110], ['stand', 110]] };
+    case 'puzzled': return { base: 'front_scratch' };
     default:
       if (BACK_ACTIONS.includes(s.action)) return { base: 'stand', moves: ['look'] };
       return { base: 'front_stand', moves: ['flook', 'fscratch'] };
@@ -372,6 +408,10 @@ export const imd = {
     computer: 'stands at the machine wall in the study', cook: 'cooks at the stove', book: 'looks through the bookshelf',
     tv: 'watches TV from the armchair', piano: 'plays the piano', easel: 'paints at the easel under the picture wall',
     telescope: 'looks through the telescope',
+    magnifier: 'looks the work over with a magnifying glass at the writing desk', lab: 'runs tests with the test tubes in the kitchen',
+    workbench: 'puts it together at the workbench upstairs', typewriter: 'types at the typewriter',
+    pinball: 'plays pinball: a fuzz run throws random balls at the code', whiteboard: 'plans it out on the whiteboard upstairs',
+    cabinet: 'sorts index cards in the filing cabinet',
   },
   layer: null, pepe: null, dog: null, ready: false, loading: false,
   pm: new Mover([3000, 8000]), dm: new Mover([5000, 12000]),
@@ -403,6 +443,7 @@ export const imd = {
     g.fillStyle = day ? day.page : C.page; g.fillRect(0, 0, W, H);
     if (day) dots(g, 0, 0, W, 296, 3.2, 0.3, 0.16);
     sky(g, phase, now, day);
+    if (house && house.state.fireworks > 0) fireworks(g, now);
     glass(g, phase, now, day);
     g.drawImage(this.layer, 0, 0, W, H);
     if (!house) return;
@@ -680,12 +721,78 @@ function props(g, s, now, tick) {
   }
   box(g, fx, fy + 28, 28, 6.4, C.ink, 0);
   text(g, String(Math.min(99999, s.frames)), fx + 14, fy + 33, 4.8, C.paper, 600, 'center');
+  // added 2026-10-24: what the new stations show while he works there
+  const d2 = THINGS.desk2;
+  if (a === 'inspect') {
+    box(g, d2.x + 14, d2.y - 1.6, 8, 1.6, C.paper, 0.35); box(g, d2.x + 15, d2.y - 2.6, 7, 1, C.paper2, 0.3);
+    const mx = d2.x + 18 + Math.sin(now / 500) * 2.5;
+    ln(g, mx + 1.6, d2.y - 4, mx + 4, d2.y - 1.2, 0.8);
+    g.beginPath(); g.arc(mx, d2.y - 5.5, 2.4, 0, Math.PI * 2); g.fillStyle = 'rgba(159,211,255,0.55)'; g.fill(); g.lineWidth = 0.6; g.strokeStyle = C.ink; g.stroke();
+  }
+  if (a === 'typewrite') {
+    const k = (now / 2600) % 1;
+    box(g, d2.x + 4, d2.y - 9 - k * 6, 8, 3.4 + k * 6, C.paper, 0.4);
+    for (let i = 0; i < Math.floor(k * 4); i++) ln(g, d2.x + 5, d2.y - 9 - k * 6 + 1.2 + i * 1.6, d2.x + 11 - (i % 2), d2.y - 9 - k * 6 + 1.2 + i * 1.6, 0.25);
+  }
+  const rk = THINGS.rack;
+  if (a === 'experiment') {
+    for (let i = 0; i < 4; i++) {
+      const lvl = 4 + Math.sin(now / 400 + i * 1.3) * 2;
+      box(g, rk.x + 2.4 + i * 4, rk.y + 8 - lvl, 1.4, lvl, i % 2 ? C.green : C.blue, 0);
+      const k = (now / 30 + i * 9) % 18;
+      g.globalAlpha = 1 - k / 18; disc(g, rk.x + 3.1 + i * 4 + Math.sin(k) * 0.6, rk.y - 3 - k * 0.6, 0.6, C.paper, 0.25); g.globalAlpha = 1;
+    }
+  }
+  const cb = THINGS.cabinet;
+  if (a === 'file') {
+    box(g, cb.x - 7, cb.y + 1, cb.w, 7.6, C.paper, 0.5);
+    for (let i = 0; i < 5; i++) box(g, cb.x - 5.5 + i * 3, cb.y - 0.5 - ((i + Math.floor(now / 400)) % 3), 2.2, 3, '#fbfbf9', 0.3);
+  }
+  const bn = THINGS.bench;
+  if (a === 'hammer' && (now % 380) < 120) {
+    for (const [dx, dy] of [[-3, -3], [3, -3], [0, -4.5], [-4, 0], [4, 0]]) ln(g, bn.x + 17 + dx * 0.4, bn.y - 1 + dy * 0.4, bn.x + 17 + dx, bn.y - 1 + dy, 0.5, C.amber);
+  }
+  const wb = THINGS.board;
+  if (a === 'plan') {
+    const k = Math.floor(now / 700) % 9;
+    g.save(); g.lineWidth = 0.5; g.strokeStyle = C.ink;
+    const parts = [[4, 5, 9, 5], [16, 5, 24, 5], [8, 10, 18, 13], [4, 16, 10, 16], [14, 18, 26, 18], [6, 22, 22, 22], [20, 9, 26, 14], [4, 10, 7, 13], [24, 20, 27, 24]];
+    for (let i = 0; i <= k; i++) { const [x0, y0, x1, y1] = parts[i]; g.strokeRect(wb.x + x0, wb.y + y0 - 1.5, x1 - x0, 3); }
+    ln(g, wb.x + 9, wb.y + 5, wb.x + 16, wb.y + 5, 0.4, C.green); g.restore();
+  }
+  const pb = THINGS.pinball;
+  for (let i = 0; i < 5; i++) {
+    const on = a === 'pinball' ? ((i + Math.floor(now / 150)) % 3) === 0 : i === 2 && (now >> 10) % 2;
+    disc(g, pb.x + 5 + i * 3, pb.y + 8, 1, on ? [C.amber, C.red, C.green][i % 3] : '#2a2a2a', 0);
+  }
+  if (a === 'pinball') disc(g, pb.x + 4 + ((now / 40) % (pb.w - 8)), pb.y + 26 + Math.sin(now / 120) * 3, 0.9, C.ink, 0);
+  if (s.alarm > 0) {                                                         // a schedule's alarm: the clock on the mantel rings
+    const j = (now >> 5) % 2 ? 0.7 : -0.7;
+    disc(g, 302 + j, 234, 4.4, C.paper, 0.7); ln(g, 302 + j, 234, 302 + j, 231.4, 0.5); ln(g, 302 + j, 234, 304 + j, 234, 0.5);
+    disc(g, 299 + j, 229.4, 1.3, C.amber, 0.4); disc(g, 305 + j, 229.4, 1.3, C.amber, 0.4);
+    for (const [x0, y0, x1, y1] of [[295, 228, 293, 226], [309, 228, 311, 226], [295, 238, 293, 240], [309, 238, 311, 240]]) ln(g, x0, y0, x1, y1, 0.5);
+  }
   // the easel's picture grows while he paints
   const e = THINGS.easel;
   if (a === 'paint') {
     const k = 1 + Math.floor(now / 420) % 18;
     for (let i = 0; i < k; i++) { g.fillStyle = [C.green, C.blue, C.red, C.amber, C.greenD][i % 5]; g.beginPath(); g.ellipse(e.x + 3 + (i * 5) % 12, e.y + 3 + (i * 3) % 10, 1.6, 1, i, 0, Math.PI * 2); g.fill(); }
   } else { ln(g, e.x + 3, e.y + 11, e.x + 15, e.y + 9, 0.3, C.grey); }
+}
+
+// a launch he worked on went live: bursts over the roof
+function fireworks(g, now) {
+  for (let k = 0; k < 6; k++) {                     // in the open sky left and right of the roof, which hides the rest
+    const t = now / 1300 + k * 0.19, n = Math.floor(t), f = t - n, rnd = seeded(n * 7 + k * 101);
+    const x = k % 2 ? 22 + rnd() * 95 : 385 + rnd() * 80, y = 8 + rnd() * 20, col = [C.amber, C.red, C.green, C.blue][Math.floor(rnd() * 4)], r = 4 + f * 24;
+    g.save(); g.globalAlpha = 1 - f * f;
+    for (let a = 0; a < 16; a++) {
+      const th = a * Math.PI / 8, cx = Math.cos(th), cy = Math.sin(th);
+      ln(g, x + cx * r * 0.5, y + cy * r * 0.5, x + cx * r, y + cy * r, 1.1, col);
+      disc(g, x + cx * (r + 1.6), y + cy * (r + 1.6), 0.6, col, 0);
+    }
+    g.restore();
+  }
 }
 
 function lights(g, s, phase) {

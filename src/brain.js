@@ -4,7 +4,11 @@ import { FLOOR_Y, OUT_Y, FLIGHTS, DOOR_X, P } from './world.js';
 
 const SPEED = 1.1;
 const sec = (s) => Math.round(s * 30);
-const KEEP = ['mail', 'install'];   // what waits for him while he sleeps or is out
+const KEEP = ['mail', 'install'];
+// where each activity happens (a look's spots); a look without the spot sends him to the stove
+const STATION_SPOT = { computer: 'desk', telescope: 'telescope', book: 'shelf', tv: 'armchair', piano: 'piano', easel: 'easel',
+  cook: 'stove', magnifier: 'desk2', typewriter: 'desk2', lab: 'lab', workbench: 'workbench', whiteboard: 'whiteboard',
+  cabinet: 'cabinet', pinball: 'pinball' };   // what waits for him while he sleeps or is out
 
 // theme: { mapping (task category -> activity, mapping.js), spots (where each thing is, world.js SPOTS shape) }
 export class House {
@@ -16,7 +20,7 @@ export class House {
     this.carrier = null;
     this.state = { action: null, asleep: false, away: false, sign: false, working: false, smoke: false, phoneRinging: false,
       mailbox: 0, mailDue: 0, parcelDue: false, outgoing: 0, tvStatic: false, frames: 0, doorOpen: false, parcel: false,
-      needsUpdate: false, installProgress: 0 };
+      needsUpdate: false, installProgress: 0, atStation: null, fireworks: 0, alarm: 0 };
     this.queue = [];
     this.current = null;
     this.cooldown = {};
@@ -45,8 +49,9 @@ export class House {
     this.queue = this.queue.filter((q) => KEEP.includes(q.name));
   }
 
-  activityFor(category) { return this.mapping[category] || 'cook'; }
-  get workKind() { return this.activityFor(this.workCategory); }
+  // the look's activity for a category; a look without one shows it like the launch it belongs to (base)
+  activityFor(category, base) { return this.mapping[category] || this.mapping[base] || 'cook'; }
+  get workKind() { return this.activityFor(this.workCategory, this.workBase); }
 
   // another theme: its mapping and its stations; a station activity starts over at the new place
   setTheme(theme) {
@@ -74,7 +79,7 @@ export class House {
     switch (e.type) {
       case 'init':
         s.asleep = e.asleep; s.away = !!e.paused; s.sign = s.away; s.working = e.working; s.frames = e.accepted; s.tvStatic = e.verifierDown;
-        this.workCategory = e.category || this.workCategory || 'other';
+        this.workCategory = e.category || this.workCategory || 'other'; this.workBase = e.base || this.workBase || 'other';
         s.needsUpdate = !!(e.update && e.update.needs); s.parcel = s.needsUpdate;
         this.queue = []; this.current = null;
         if (s.away) this.leave();
@@ -83,20 +88,24 @@ export class House {
         if (e.letter && (s.away || e.asleep)) this.leaveNote(s.away ? 'away' : 'bed', false);
         else if (e.letter) this.push(2, 'letter', () => this.writeLetter());
         break;
-      case 'work': s.working = true; this.workCategory = e.category || 'other'; this.push(3, 'work', () => this.work()); break;
+      case 'work': s.working = true; this.workCategory = e.category || 'other'; this.workBase = e.base || 'other'; this.push(3, 'work', () => this.work()); break;
       case 'workkind': case 'submitted':
         if (!e.category) break;
-        if (s.working && this.activityFor(e.category) !== this.workKind) {
-          this.workCategory = e.category;
+        if (s.working && this.activityFor(e.category, e.base) !== this.workKind) {
+          this.workCategory = e.category; this.workBase = e.base || 'other';
           if (this.current && this.current.name === 'work') this.current = null;   // start over with the right activity
-        } else this.workCategory = e.category;
+        } else { this.workCategory = e.category; this.workBase = e.base || this.workBase || 'other'; }
         break;
+      // a job he worked on is done: he cheers when it completed, scratches his head when it is blocked
+      case 'jobdone': this.push(4, 'jobdone', () => this.jobDone(e.state === 'completed')); break;
+      case 'launched': s.fireworks = sec(12); break;               // a launch he worked on went live: fireworks
+      case 'alarm': s.alarm = sec(4); this.sound.ring(); break;    // a schedule opened his job: the clock rings
       case 'workdone': s.working = false; break;
       case 'post': this.push(4, 'post', () => this.post()); break;
       case 'accepted': case 'rejected': this.letterFor(e.type === 'accepted', e.n); break;
       case 'failed': s.smoke = true; this.push(7, 'smoke', () => this.fan()); break;
       case 'phone': s.phoneRinging = true; this.push(6, 'phone', () => this.answer()); break;
-      case 'oracle': this.push(4, 'oracle', () => this.station(this.activityFor('oracle'), () => false, 18)); break;
+      case 'oracle': this.push(4, 'oracle', () => this.station(this.activityFor('oracle', 'other'), () => false, 18)); break;
       case 'verifier': s.tvStatic = e.down; break;
       case 'update': s.needsUpdate = true; if (!s.parcel && !(this.carrier && this.carrier.kind === 'parcel')) s.parcelDue = true; break;
       case 'updated': this.knockAck = true; this.push(5, 'install', () => this.install()); break;
@@ -146,6 +155,8 @@ export class House {
     const m = this.man;
     this.state.doorOpen = (m.floor === 'out' || (m.floor === 0 && m.x < 70)) && Math.abs(m.x - DOOR_X) < 10;
     if (this.state.outgoing > 0) this.state.outgoing--;
+    if (this.state.fireworks > 0) this.state.fireworks--;
+    if (this.state.alarm > 0) this.state.alarm--;
     if (this.state.phoneRinging && t % 30 === 0) this.sound.ring();
   }
 
@@ -228,8 +239,9 @@ export class House {
   // seat's task changes to another activity
   *station(kind, keepGoing, minS, follow = false) {
     const s = this.state, m = this.man;
-    const spot = { computer: 'desk', telescope: 'telescope', book: 'shelf', tv: 'armchair', piano: 'piano', easel: 'easel', cook: 'stove' }[kind] || 'stove';
-    yield* this.goTo(spot);
+    const spot = STATION_SPOT[kind] || 'stove';
+    yield* this.goTo(this.spots[spot] ? spot : 'stove');
+    s.atStation = kind;
     let i = 0;
     while (keepGoing() || i < sec(minS)) {
       if (kind === 'computer') { s.action = 'type'; m.pose = 'type'; m.seat = 10; if (i % 5 === 0) this.sound.tick(); }
@@ -238,13 +250,25 @@ export class House {
       else if (kind === 'tv') { s.action = 'tv'; m.pose = 'tvsit'; m.seat = 12; }
       else if (kind === 'piano') { s.action = 'piano'; m.pose = 'piano'; m.seat = 10; m.icon = 'note'; if (i % 9 === 0) this.sound.note(); }
       else if (kind === 'easel') { s.action = 'paint'; m.pose = (i % sec(12)) < sec(10) ? 'paint' : 'stand'; }    // a step back now and then
+      else if (kind === 'magnifier') { s.action = 'inspect'; m.pose = 'inspect'; }
+      else if (kind === 'typewriter') { s.action = 'typewrite'; m.pose = 'typewrite'; if (i % 4 === 0) this.sound.tick(); }
+      else if (kind === 'lab') { s.action = 'experiment'; m.pose = 'experiment'; }
+      else if (kind === 'workbench') { s.action = 'hammer'; m.pose = 'hammer'; if (i % 12 === 0) this.sound.tick(); }
+      else if (kind === 'whiteboard') { s.action = 'plan'; m.pose = 'plan'; }
+      else if (kind === 'cabinet') { s.action = 'file'; m.pose = 'file'; }
+      else if (kind === 'pinball') { s.action = 'pinball'; m.pose = 'pinball'; if (i % 20 === 0) this.sound.note(); }
       else { s.action = 'cook'; m.pose = (i % sec(20)) < sec(16) ? 'cook' : 'eat'; }       // cooking, with a taste now and then
       if (i > 0 && i % sec(90) === 0 && kind !== 'tv') { m.pose = 'stretch'; for (let k = 0; k < sec(2); k++) yield; }
       i++;
       yield;
       if (s.asleep || s.away || (follow && kind !== this.workKind)) break;
     }
-    s.action = null; m.pose = 'stand'; m.icon = null; m.seat = 10;
+    s.action = null; s.atStation = null; m.pose = 'stand'; m.icon = null; m.seat = 10;
+  }
+
+  *jobDone(ok) {
+    if (ok) { this.sound.jingle(); yield* this.act('cheer', 'dance', 2.5, 'heart'); }
+    else yield* this.act('puzzled', 'puzzled', 3, 'ask');
   }
 
   *post() {

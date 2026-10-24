@@ -61,7 +61,7 @@ function renderLegend() {
   for (const [cat, label] of Object.entries(CATEGORIES)) {
     const tr = document.createElement('tr'), a = document.createElement('td'), b = document.createElement('td');
     a.textContent = label;
-    b.textContent = theme.activityText[theme.mapping[cat]] || theme.mapping[cat];
+    b.textContent = theme.activityText[theme.mapping[cat]] || 'like the launch it belongs to: token launch work or not';
     tr.append(a, b); body.append(tr);
   }
   $('legend-look').textContent = theme.label;
@@ -157,6 +157,9 @@ const SAY = {
   update: (e) => `A parcel arrived: a newer worker is out (${e.info.latest}${e.info.behind != null ? ', ' + e.info.behind + ' releases ahead of his' : ''}). It waits at the door until the seat updates.`,
   updated: (e) => `The seat updated its worker to ${e.to}. He unpacks the parcel and installs it.`,
   pause: () => 'His owner paused the seat. He hung a "back soon" sign on the door and went out.',
+  jobdone: (e) => e.state === 'completed' ? 'A job he worked on is done. He cheers.' : 'A job he worked on is blocked. He scratches his head.',
+  launched: (e) => `A launch he worked on went live (${e.kind}): fireworks over the roof.`,
+  alarm: () => 'His alarm clock rings: a schedule opened this one.',
   resume: () => 'The seat is on again. He came home and took the sign down.',
 };
 const resting = () => !house ? null : house.state.away ? { during: 'was out', after: 'he\'s back' }
@@ -164,7 +167,7 @@ const resting = () => !house ? null : house.state.away ? { during: 'was out', af
 
 // what he does for the task: the theme's mapping and its wording
 function workLine(e) {
-  const act = theme.mapping[e.category] || 'cook';
+  const act = theme.mapping[e.category] || theme.mapping[e.base] || 'cook';
   const base = 'He ' + (theme.activityText[act] || 'starts working') + ': ' + (e.label || 'a task');
   return base + (e.step ? ' (' + e.step + ')' : '') + (e.guess ? ', probably, going by his recent work.' : '.');
 }
