@@ -465,7 +465,7 @@ export const imd = {
     lights(g, s, phase);
     // at his station the bubble shows the model's namesake; with an icon of the activity too, the two take turns
     const work = workInfo(s), sym = work && s.atStation ? MODEL_SYMBOL[work.family] : null;
-    const icon = m.icon && sym ? (Math.floor(now / 3000) % 2 ? sym : m.icon) : m.icon || sym;
+    const icon = (house.flash && house.flash.icon) || (m.icon && sym ? (Math.floor(now / 3000) % 2 ? sym : m.icon) : m.icon || sym);
     if (icon && !m.hidden) {
       const head = m.pose === 'sleep' ? [76, 97] : ['tvsit', 'nap'].includes(m.pose) ? [THINGS.chair.x + 13, THINGS.chair.y - 14] : [m.x, m.y - PH + 2];
       bubble(g, head[0], head[1], icon, now);
@@ -518,6 +518,7 @@ function carried(g, what, x, y) {
 }
 
 function drawDog(g, th, d, now) {
+  if (d.hidden) return;
   const img = th.dog;
   if (!img) return;
   const spec = dogSpec(d);
@@ -653,7 +654,9 @@ function props(g, s, now, tick) {
     text(g, 'INSTALL', sc.x + sc.w / 2, sc.y + 7, 4.2, C.green, 600, 'center');
     box(g, sc.x + 3, sc.y + 11, sc.w - 6, 3, null, 0.5); g.strokeStyle = C.green; g.strokeRect(sc.x + 3, sc.y + 11, sc.w - 6, 3);
     box(g, sc.x + 3, sc.y + 11, (sc.w - 6) * (s.installProgress || 0), 3, C.green, 0);
-  } else if (['type', 'review', 'letter'].includes(a)) screenText(g, sc.x, sc.y, sc.w, sc.h, now);
+  } else if (s.chart != null) candles(g, sc.x, sc.y, sc.w, sc.h, s.chart);
+  else if (s.buying != null) buyScreen(g, sc.x, sc.y, sc.w, sc.h, s.buying);
+  else if (['type', 'review', 'letter'].includes(a)) screenText(g, sc.x, sc.y, sc.w, sc.h, now);
   else if (s.needsUpdate && (now >> 9) % 2) {
     text(g, 'UPDATE', sc.x + sc.w / 2, sc.y + 8, 4.4, C.amber, 600, 'center');
     g.beginPath(); g.moveTo(sc.x + sc.w / 2 - 3, sc.y + 11); g.lineTo(sc.x + sc.w / 2 + 3, sc.y + 11); g.lineTo(sc.x + sc.w / 2, sc.y + 15); g.closePath(); g.fillStyle = C.amber; g.fill();
@@ -917,12 +920,43 @@ function bubble(g, x, y, icon, now) {
   } else if (icon === 'sun') {                                     // Sol
     for (let i = 0; i < 8; i++) { const t = i * Math.PI / 4; ln(g, cx + Math.cos(t) * 2.7, cy + Math.sin(t) * 2.7, cx + Math.cos(t) * 4, cy + Math.sin(t) * 4, 0.55, C.ink); }
     disc(g, cx, cy, 2.1, C.amber, 0.45);
+  } else if (icon === 'tear') {                                    // a lost trade
+    g.beginPath(); g.moveTo(cx, cy - 3.8); g.quadraticCurveTo(cx + 3.2, cy + 0.6, cx, cy + 3.2); g.quadraticCurveTo(cx - 3.2, cy + 0.6, cx, cy - 3.8);
+    g.fillStyle = C.blue; g.fill(); g.lineWidth = 0.45; g.strokeStyle = C.ink; g.stroke();
   } else if (icon === 'moon') {                                    // Luna
     disc(g, cx - 0.4, cy + 0.2, 3.3, C.greyL, 0.45); disc(g, cx + 1.4, cy - 0.9, 2.8, C.paper, 0);
   } else {
     const glyph = { note: '♪', z: 'z', ask: '?', bang: '!', dots: '…' }[icon] || '';
     text(g, glyph, cx, cy + 2.6, icon === 'note' ? 7.2 : 7, C.ink, 600, 'center');
   }
+}
+
+// trading memecoins on the machine: green and red candles, one more every half second, and then the big red one
+// (frame: ticks since he sat down, 30 a second)
+function candles(g, x, y, w, h, frame) {
+  box(g, x, y, w, h, C.glass, 0);
+  const n = Math.min(8, 1 + Math.floor(frame / 15)), crash = frame > 156, rnd = seeded(2021);
+  let p = y + h * 0.62;
+  for (let i = 0; i < n; i++) {
+    const up = rnd() < (i < 5 ? 0.72 : 0.4), d = (1.2 + rnd() * 2.6) * (up ? -1 : 1), cx = x + 1.6 + i * 3.1;
+    const top = Math.min(p, p + d), bh = Math.max(0.8, Math.abs(d)), col = up ? C.green : C.red;
+    ln(g, cx + 0.8, top - 1, cx + 0.8, top + bh + 1, 0.3, col);
+    box(g, cx, top, 1.6, bh, col, 0);
+    p = Math.max(y + 2.5, Math.min(y + h - 2.5, p + d));
+  }
+  if (crash) {
+    const cx = x + 1.6 + n * 3.1, grow = Math.min(1, (frame - 156) / 20);
+    box(g, cx, y + 1.5, 2.8, (h - 3) * grow, C.red, 0);
+    if (grow >= 1) text(g, '-87%', x + w - 1.5, y + h - 2, 4.2, C.red, 600, 'right');
+  }
+}
+
+// buying IMD on the machine: BUY, and the candles go one way only
+function buyScreen(g, x, y, w, h, frame) {
+  box(g, x, y, w, h, C.glass, 0);
+  const n = Math.min(6, 1 + Math.floor(frame / 12));
+  for (let i = 0; i < n; i++) box(g, x + 2 + i * 3.4, y + h - 3 - i * 2.2 - 3, 1.8, 3 + i * 0.4, C.green, 0);
+  if ((frame >> 3) % 2) text(g, 'BUY', x + w - 2, y + 6.5, 5, C.green, 600, 'right');
 }
 
 // the step he works on now, as feed.js machineInfo reads it (provider, model, family, premium, effort), while he is

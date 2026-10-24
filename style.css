@@ -54,6 +54,18 @@ h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; }
 .seat-form { flex: 1 1 auto; }
 .split-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .split-actions:not(:has(button:not([hidden]))) { display: none; }
+/* talking to him (2026-10-24): one command line under the seat row, his answer under it, like the original game's prompt */
+.talk { display: grid; gap: 6px; }
+.talk-line { display: flex; align-items: center; gap: 10px; margin: 0; padding: 0 12px; border: 2px solid var(--wood-l); background: var(--night-2); }
+.talk-line:focus-within { border-color: var(--lamp); }
+.talk-prompt { color: var(--lamp); font-weight: 600; }
+#talk-input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 8px 0; border: 0; outline: 0; background: transparent; color: var(--ink);
+  font: inherit; caret-color: var(--lamp); }
+#talk-input::placeholder { color: var(--muted); opacity: 0.8; }
+.talk-reply { margin: 0; min-height: 1.4em; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.talk-reply:empty { display: none; }
+.talk-reply .who { color: var(--lamp); }
+.talk-reply a { color: var(--lamp); }
 label { color: var(--muted); }
 input[type=number] {
   width: 7.5rem; font: inherit; color: var(--paper-ink); background: var(--paper);
@@ -219,6 +231,10 @@ html[data-look="imd"] .topbar button { padding: 0 14px; font-size: 12px; font-we
 }
 html[data-look="imd"] .diary { background: var(--term); border: 1.5px solid var(--term-edge); padding: 12px 14px; }
 html[data-look="imd"] .diary ol { font-size: 12.5px; }
+html[data-look="imd"] .talk-line { background: var(--term); border-color: var(--term-edge); height: 40px; }
+html[data-look="imd"] .talk-prompt { color: var(--lamp); }
+html[data-look="imd"] #talk-input { font-size: 13px; }
+html[data-look="imd"] .talk-reply { font-size: 12.5px; }
 html[data-look="imd"] .diary li { grid-template-columns: 1rem 3.4rem 1fr; }
 html[data-look="imd"] .diary li::before { content: ">"; color: var(--lamp); }
 html[data-look="imd"] .diary li:first-child time, html[data-look="imd"] .diary li:first-child::before { color: var(--lamp); }

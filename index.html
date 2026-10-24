@@ -12,7 +12,8 @@
 <body>
 <header class="topbar">
   <div class="brand-row">
-    <a class="logo" href="./" aria-label="LCP, Little Computer Pepes"><span class="logo-mark" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path vector-effect="non-scaling-stroke" d="M2.2 6.6 A3 3 0 0 1 7.8 4.6 Q8 5.2 8.2 4.6 A3 3 0 0 1 13.8 6.6 C15.3 8.2 15 11.4 12.8 12.8 Q8 15.2 3.2 12.8 C1 11.4 0.7 8.2 2.2 6.6 Z"/><path vector-effect="non-scaling-stroke" d="M2.5 5.6 Q5 4.6 7.6 5.2 M8.4 5.2 Q11 4.6 13.5 5.6"/><path vector-effect="non-scaling-stroke" d="M3.4 10 Q8 12.8 12.6 10"/><circle cx="5.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/><circle cx="11.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/></svg></span><span class="logo-label">LCP</span></a>
+    <a class="logo" href="https://archive.org/details/Little_Computer_People_1985_Activision" target="_blank" rel="noopener noreferrer"
+      title="Little Computer People (Activision, 1985) on the Internet Archive" aria-label="LCP: the original Little Computer People on the Internet Archive (opens in a new tab)"><span class="logo-mark" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path vector-effect="non-scaling-stroke" d="M2.2 6.6 A3 3 0 0 1 7.8 4.6 Q8 5.2 8.2 4.6 A3 3 0 0 1 13.8 6.6 C15.3 8.2 15 11.4 12.8 12.8 Q8 15.2 3.2 12.8 C1 11.4 0.7 8.2 2.2 6.6 Z"/><path vector-effect="non-scaling-stroke" d="M2.5 5.6 Q5 4.6 7.6 5.2 M8.4 5.2 Q11 4.6 13.5 5.6"/><path vector-effect="non-scaling-stroke" d="M3.4 10 Q8 12.8 12.6 10"/><circle cx="5.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/><circle cx="11.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/></svg></span><span class="logo-label">LCP</span></a>
     <a class="brand" href="./">Little Computer Pepes</a>
   </div>
   <nav class="toggles" aria-label="Look and settings">
@@ -31,6 +32,25 @@
     <h1 id="title">Who lives in Swarmstreet?</h1>
     <p id="lede">A little pepe lives the working day of one IMD swarm seat. Everything he does comes from the seat's public record.</p>
   </header>
+
+  <section class="controls" aria-label="Choose a seat">
+    <form id="seat-form" class="seat-form">
+      <label for="seat-input">Seat</label>
+      <input id="seat-input" type="number" min="0" max="1999" inputmode="numeric" placeholder="0–1999">
+      <button type="submit">Visit</button>
+      <button type="button" id="random-btn" class="quiet">Random seat</button>
+      <span class="split-actions">
+        <button type="button" id="random-job-btn" class="quiet" hidden>Random job</button>
+        <button type="button" id="explorer-btn" class="quiet" hidden>Show on IMD Explorer</button>
+      </span>
+    </form>
+    <div id="wallet-panel" class="wallet" hidden aria-live="polite">
+      <p id="wallet-note"></p>
+      <div id="wallet-choices" class="doors"></div>
+      <div id="wallet-seats" class="doors"></div>
+      <button type="button" id="wallet-forget" class="quiet" hidden>Forget</button>
+    </div>
+  </section>
 
   <div class="stage">
     <div class="screen">
@@ -53,23 +73,13 @@
     <button type="button" id="knock-ok">Got it</button>
   </section>
 
-  <section class="controls" aria-label="Choose a seat">
-    <form id="seat-form" class="seat-form">
-      <label for="seat-input">Seat</label>
-      <input id="seat-input" type="number" min="0" max="1999" inputmode="numeric" placeholder="0–1999">
-      <button type="submit">Visit</button>
-      <button type="button" id="random-btn" class="quiet">Random busy seat</button>
-      <span class="split-actions">
-        <button type="button" id="random-job-btn" class="quiet" hidden>Random active job</button>
-        <button type="button" id="explorer-btn" class="quiet" hidden>Show on IMD Explorer</button>
-      </span>
+  <section class="talk" aria-label="Talk to him">
+    <form id="talk-form" class="talk-line" autocomplete="off">
+      <label for="talk-input" class="talk-prompt">&gt;</label>
+      <input id="talk-input" type="text" maxlength="160" spellcheck="false" enterkeyhint="send"
+        placeholder="talk to him: feed the dog, how long do you live here?, buy imd, help">
     </form>
-    <div id="wallet-panel" class="wallet" hidden aria-live="polite">
-      <p id="wallet-note"></p>
-      <div id="wallet-choices" class="doors"></div>
-      <div id="wallet-seats" class="doors"></div>
-      <button type="button" id="wallet-forget" class="quiet" hidden>Forget</button>
-    </div>
+    <p id="talk-reply" class="talk-reply" aria-live="polite"></p>
   </section>
 
   <section class="below">
@@ -119,6 +129,7 @@
         <tr><td>He cheers</td><td>a job he worked on is done</td></tr>
         <tr><td>He scratches his head</td><td>a job he worked on is blocked</td></tr>
         <tr><td>Fireworks over the roof</td><td>a launch he worked on went live</td></tr>
+        <tr><td>You type to him on the line under the seat row</td><td>he does it, answers at his machine (an explorer page opens beside him), or, while the seat works, tells you to wait; ask too much and he takes the dog out for a walk. help lists what he understands</td></tr>
         <tr><td>Big fireworks, and he dances in the kitchen with his dog</td><td>the job the page follows (#/job/…) is done</td></tr>
         <tr><td>The attic window lit: amber or white-green</td><td>while he works on the seat's premium model; amber for Claude Code, white-green for Codex (read through the local relay)</td></tr>
         <tr><td>More chimney smoke</td><td>the effort of that premium work: a thin wisp at minimal or low, thick fast billows at max or ultra; other tiers publish no effort and keep the usual puffs</td></tr>

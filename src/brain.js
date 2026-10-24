@@ -20,7 +20,11 @@ export class House {
     this.carrier = null;
     this.state = { action: null, asleep: false, away: false, sign: false, working: false, smoke: false, phoneRinging: false,
       mailbox: 0, mailDue: 0, parcelDue: false, outgoing: 0, tvStatic: false, frames: 0, doorOpen: false, parcel: false,
-      needsUpdate: false, installProgress: 0, atStation: null, fireworks: 0, bigFireworks: 0, alarm: 0, machine: null };
+      needsUpdate: false, installProgress: 0, atStation: null, fireworks: 0, bigFireworks: 0, alarm: 0, machine: null,
+      chart: null, chartHold: 0, buying: null };
+    this.pace = 1;               // walking speed, 1 = his usual (buying IMD makes him run, a lost trade makes him drag)
+    this.flash = null;           // {icon, left}: a quick reaction over his head (talking to him while he works)
+    this.walkout = false;        // he left with the dog because he was asked too much (talk.js)
     this.queue = [];
     this.current = null;
     this.cooldown = {};
@@ -104,6 +108,17 @@ export class House {
       case 'celebrate': s.fireworks = sec(32); s.bigFireworks = sec(32); this.push(9.5, 'celebrate', () => this.celebrate()); break;
       case 'alarm': s.alarm = sec(4); this.sound.ring(); break;    // a schedule opened his job: the clock rings
       case 'machine': s.machine = e.info || null; break;           // what his machine runs while he works (feed.js machineInfo)
+      // the visitor told him something (talk.js, main.js): one scene at a time, the newest wins; done() when it's over
+      case 'command': {
+        const gen = this.commandScene(e.act, e.done);
+        if (!gen) break;
+        this.queue = this.queue.filter((q) => q.name !== 'command');
+        if (this.current && this.current.name === 'command') this.current = null;
+        this.push(e.act === 'buy' ? 6.6 : 6.5, 'command', gen);
+        break;
+      }
+      case 'flash': this.flash = { icon: e.icon, left: sec(e.seconds || 2.5) }; break;
+      case 'walkout': if (!this.walkout) this.push(9.6, 'walkout', () => this.walkOut(e.seconds || 90)); break;
       case 'workdone': s.working = false; break;
       case 'post': this.push(4, 'post', () => this.post()); break;
       case 'accepted': case 'rejected': this.letterFor(e.type === 'accepted', e.n); break;
@@ -162,12 +177,16 @@ export class House {
     if (this.state.fireworks > 0) this.state.fireworks--;
     if (this.state.bigFireworks > 0) this.state.bigFireworks--;
     if (this.state.alarm > 0) this.state.alarm--;
+    if (this.state.chartHold > 0 && --this.state.chartHold === 0) this.state.chart = null;
+    if (this.flash && --this.flash.left <= 0) this.flash = null;
     if (this.state.phoneRinging && t % 30 === 0) this.sound.ring();
   }
 
   start(item) {
     this.man.icon = null; this.man.carry = null; this.state.action = null; this.state.closeup = null;   // a cut-off knock leaves no overlay
     this.state.party = item.name === 'celebrate';
+    this.pace = 1; this.state.buying = null; this.state.chart = null; this.state.chartHold = 0;   // a new scene wipes the screen
+    if (this.walkout && item.name !== 'walkout') this.backHome();
     if (this.man.pose === 'sleep' && item.name !== 'sleep') this.place('bed', true);
     const m = this.man;
     if (m.pose !== 'sleep') m.y = m.floor === 'out' ? OUT_Y : FLOOR_Y[m.floor];   // an interrupted climb lands him on his floor
@@ -190,7 +209,7 @@ export class House {
     while (Math.abs(m.x - x) > 0.01) {
       const d = x - m.x;
       m.face = d > 0 ? 1 : -1;
-      m.x += Math.sign(d) * Math.min(SPEED, Math.abs(d));
+      m.x += Math.sign(d) * Math.min(SPEED * this.pace, Math.abs(d));
       m.step++;
       if (m.floor === 0 && m.x < DOOR_X) { m.floor = 'out'; m.y = OUT_Y; }
       else if (m.floor === 'out' && m.x >= DOOR_X) { m.floor = 0; m.y = FLOOR_Y[0]; }
@@ -202,7 +221,7 @@ export class House {
   *climb(flight, up) {
     const m = this.man;
     const [a, b] = up ? [flight.bottom, flight.top] : [flight.top, flight.bottom];
-    const n = Math.ceil(Math.abs(b[0] - a[0]) / (SPEED * 0.8));
+    const n = Math.ceil(Math.abs(b[0] - a[0]) / (SPEED * 0.8 * this.pace));
     m.pose = 'walk'; m.face = Math.sign(b[0] - a[0]);
     for (let i = 1; i <= n; i++) { m.x = a[0] + (b[0] - a[0]) * i / n; m.y = a[1] + (b[1] - a[1]) * i / n; m.step++; yield; }
     m.floor = up ? flight.lower + 1 : flight.lower;
@@ -294,6 +313,93 @@ export class House {
     this.sound.jingle();
     yield* this.act('cheer', 'dance', 4, 'note');
     d.mode = undefined;
+  }
+
+  // ---------- what the visitor tells him (talk.js; main.js decides whether he does it) ----------
+  commandScene(act, done) {
+    const r = this.routines, routine = (name) => () => r[name].call(this);
+    const scenes = {
+      feedDog: routine('feedDog'), petDog: routine('petDog'), piano: routine('piano'), records: routine('records'), tv: routine('tv'),
+      cook: routine('cook'), snack: routine('snack'), book: routine('book'), exercise: routine('exercise'), shower: routine('shower'),
+      brush: routine('brush'), water: routine('water'), fire: routine('fire'), window: routine('window'), nap: routine('nap'),
+      mailcheck: routine('mailcheck'),
+      paint: () => this.station('easel', () => false, 9), telescope: () => this.station('telescope', () => false, 8),
+      dance: () => this.act('dance', 'dance', 5, 'note'), lfg: () => this.act('dance', 'dance', 4, 'star'),
+      gm: () => this.act('gm', 'stretch', 1.6, 'heart'), nope: () => this.act('nope', 'puzzled', 2, 'bang'),
+      moon: () => this.moon(), touchGrass: () => this.touchGrass(), lookup: () => this.lookup(done),
+      trade: () => this.trade(done), buy: () => this.buyImd(done),
+    };
+    return scenes[act] || null;
+  }
+
+  // a question about data: he hurries to the machine, types, then the answer (done)
+  *lookup(done) {
+    this.pace = 1.8;
+    yield* this.goTo('desk');
+    this.pace = 1;
+    yield* this.act('type', 'type', 2.5, null, (i) => { if (i % 5 === 0) this.sound.tick(); });
+    if (done) done();
+  }
+
+  // memecoins: at the machine the chart runs green and red and ends in one big red candle; he drags himself off crying
+  *trade(done) {
+    const s = this.state;
+    yield* this.goTo('desk');
+    s.chart = 0; s.chartHold = 0;
+    yield* this.act('trade', 'type', 7.5, null, (i) => { s.chart = i; if (i % 4 === 0) this.sound.tick(); });
+    s.chartHold = sec(14);                                   // the red candle stays on the screen while he walks off
+    if (done) done();
+    this.pace = 0.45; this.man.icon = 'tear';
+    yield* this.goTo('livingMid');
+    this.pace = 1;
+    yield* this.act('cry', 'sad', 5, 'tear');
+  }
+
+  // IMD: he runs to the machine and buys, green on the screen
+  *buyImd(done) {
+    const s = this.state;
+    this.pace = 3; this.man.icon = 'bang';
+    yield* this.goTo('desk');
+    this.pace = 1;
+    s.buying = 0;
+    yield* this.act('buy', 'type', 3.5, 'heart', (i) => { s.buying = i; if (i % 3 === 0) this.sound.tick(); });
+    this.sound.jingle();
+    if (done) done();
+    yield* this.act('cheer', 'dance', 2.5, 'heart');
+    s.buying = null;
+  }
+
+  *touchGrass() {
+    yield* this.goTo('doorOut');
+    yield* this.walkX(22);
+    this.man.face = -1;
+    yield* this.act('grass', 'eat', 5, 'leaf');
+    yield* this.goTo('livingMid');
+  }
+
+  *moon() { yield* this.goTo('telescope'); yield* this.act('telescope', 'telescope', 7, 'moon'); }
+
+  // asked too much: he takes the dog out of the house for a while (a BACK SOON sign on the door), then comes home
+  *walkOut(seconds) {
+    const s = this.state, d = this.dog, m = this.man;
+    this.walkout = true; s.sign = true;
+    d.target = 66; d.goal = 'sit'; d.wait = 1e9;           // the dog comes to the door
+    yield* this.goTo('doorOut');
+    for (let i = 0; i < sec(8) && Math.abs(d.x - 66) > 1; i++) yield;
+    d.hidden = true;                                        // the dog goes first
+    yield* this.walkX(this.spots.away.x);
+    m.hidden = true;
+    yield* this.wait(seconds);
+    m.hidden = false;
+    d.hidden = false; d.x = 66; d.target = 150; d.goal = 'sit'; d.wait = sec(4);
+    yield* this.goTo('livingMid');
+    this.backHome();
+  }
+
+  backHome() {
+    this.walkout = false; this.state.sign = this.state.away;
+    if (!this.state.away) this.man.hidden = false;
+    this.dog.hidden = false; this.dog.mode = undefined;
   }
 
   *post() {
@@ -483,6 +589,7 @@ export class House {
 
   tickDog() {
     const d = this.dog, m = this.man, s = this.state;
+    if (d.hidden) return;                                   // out with him (walkOut)
     const mode = s.away ? 'door' : s.asleep ? 'sleep' : null;     // while he is out the dog waits by the door
     if (mode !== d.mode) {
       d.mode = mode;

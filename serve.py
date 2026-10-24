@@ -3,7 +3,7 @@
     python3 -I serve.py . 8795
 
 /proxy/seats/<n> (n = 0..1999) returns a few fields of api.imd.fun/seats/<n>: tokenId, online, daemonVersion,
-pausedByOwnerAt and the 20 newest tasks (nodeKey, role, launch kind, status, submittedAt, the first 100 characters
+pausedByOwnerAt, pairedAt, status, agentId and the 20 newest tasks (nodeKey, role, launch kind, status, submittedAt, the first 100 characters
 of the objective). That route sends no CORS header, so a browser cannot read it directly; the full record is
 0.2-0.8 MB, so the relay trims it and caches it for 60 s.
 
@@ -19,6 +19,9 @@ record's `live`, with its `since`, runtime and model). Cached for 5 s.
 premium tier's model and effort, from the seat record; the other tiers are not published) and the step it runs now,
 found in the records of the jobs not over yet among the newest 200 (runtime and model from the step's `live`; no
 effort there). Cached for 10 s; the job list for 15 s.
+
+/proxy/jobs/active lists the jobs not over yet among the newest 200 (id, state, template, objective): the command line
+follows one by the first characters of its id, or one at random. Cached for 15 s.
 
 /proxy/scheduled returns the ids of the jobs and oracle questions that the active and paused schedules opened
 (api.imd.fun/schedules and /schedules/<id>, no CORS). Cached for 10 minutes. Listens on 127.0.0.1 only.
@@ -38,7 +41,7 @@ STEPS = {}
 MACHINE = {}
 ACTIVE = [0, []]
 SCHEDULED = [0, b'{"ids": []}']
-FIELDS = ('tokenId', 'online', 'daemonVersion', 'pausedByOwnerAt')
+FIELDS = ('tokenId', 'online', 'daemonVersion', 'pausedByOwnerAt', 'pairedAt', 'status', 'agentId')
 
 
 def seat_record(n):
@@ -115,13 +118,18 @@ def job_steps(jid):
     return body
 
 
-def active_job_ids():
+def active_jobs():
     if time.time() - ACTIVE[0] < 15:
         return ACTIVE[1]
-    ids = [j['id'] for j in fetch_json('https://api.imd.fun/jobs?limit=200').get('jobs') or []
-           if j.get('id') and j.get('state') not in ('completed', 'blocked', 'failed', 'cancelled')]
-    ACTIVE[0], ACTIVE[1] = time.time(), ids
-    return ids
+    jobs = [{'id': j['id'], 'state': j.get('state'), 'template': j.get('template'), 'objective': (j.get('objective') or '')[:140]}
+            for j in fetch_json('https://api.imd.fun/jobs?limit=200').get('jobs') or []
+            if j.get('id') and j.get('state') not in ('completed', 'blocked', 'failed', 'cancelled')]
+    ACTIVE[0], ACTIVE[1] = time.time(), jobs
+    return jobs
+
+
+def active_job_ids():
+    return [j['id'] for j in active_jobs()]
 
 
 def seat_machine(n):
@@ -173,6 +181,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         j = re.fullmatch(r'/proxy/jobs/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', path)
         st = re.fullmatch(r'/proxy/jobs/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/steps', path)
         mc = re.fullmatch(r'/proxy/seats/(\d{1,4})/machine', path)
+        if path == '/proxy/jobs/active':
+            try:
+                return self.send_json(json.dumps({'jobs': active_jobs()}).encode())
+            except Exception as e:  # noqa: BLE001 - report, never crash the server
+                return self.send_error(502, f'jobs unavailable: {type(e).__name__}')
         if mc and int(mc.group(1)) < 2000:
             try:
                 return self.send_json(seat_machine(int(mc.group(1))))

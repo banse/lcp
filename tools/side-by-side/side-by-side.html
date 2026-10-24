@@ -215,7 +215,7 @@
       jobs = r.ok ? (await r.json()).jobs || [] : null;
     } catch { jobs = null; }
     renderJobs();
-    sendMode();                                      // the house's "Random active job" knows how many there are
+    sendMode();                                      // the house's "Random job" knows how many there are
   }
   loadJobs();
   setInterval(loadJobs, 30000);
@@ -234,7 +234,7 @@
   });
 
   // one of the active jobs, read fresh, picked at random; another one than the job followed now when there is a choice
-  // (the house's "Random active job" button asks for it)
+  // (the house's "Random job" button asks for it)
   async function randomJob() {
     await loadJobs();
     const pool = (jobs || []).filter((j) => j.id !== followedJob);
@@ -286,10 +286,13 @@
   }
 
   // "Hide explorer" in the house: this page gives way to the house alone, on the seat or job it shows;
-  // "Random active job" in the house: follow one
+  // "Random job" in the house: follow one
   window.addEventListener('message', (e) => {
     if (e.origin !== 'http://127.0.0.1:8795' || e.source !== house.contentWindow || !e.data) return;
     if (e.data.type === 'lcp:randomJob') { randomJob(); return; }
+    // the house's command line: a job to follow, or an explorer page he names (the house stays where it is)
+    if (e.data.type === 'lcp:followJob' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(e.data.id || '')) { followJob(e.data.id); return; }
+    if (e.data.type === 'lcp:explore') { const path = explorerPath(e.data.path); if (path) { lastPath = path; explorer.src = path; } return; }
     if (e.data.type !== 'lcp:hideExplorer') return;
     const hash = typeof e.data.hash === 'string' && /^#[\w\/.-]*$/.test(e.data.hash) ? e.data.hash : '';
     location.href = LCP + hash;
@@ -329,11 +332,16 @@
   }
   checkHouse();
 
-  // ---------- the start: ?seat=N, and ?job=<id> when the house followed one (its "Show on IMD Explorer" button) ----------
+  // a path on the explorer, nothing else: /agents/12, /jobs/<id>, /?type=parts, /oracle
+  function explorerPath(p) { return typeof p === 'string' && /^\/(?!\/)[\w\-\/?=&.%]*$/.test(p) && p.length < 200 ? p : null; }
+
+  // ---------- the start: ?seat=N, and ?job=<id> when the house followed one (its "Show on IMD Explorer" button);
+  // ?ex=<path> an explorer page the house's command line asked for ----------
   const params = new URLSearchParams(location.search), ps = params.get('seat') || '', pj = params.get('job') || '';
+  const startEx = explorerPath(params.get('ex'));
   const startSeat = /^\d{1,4}$/.test(ps) && +ps <= 1999 ? ps : null;
   const startJob = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pj) ? pj : null;
-  explorer.src = startSeat ? '/agents/' + startSeat : startJob ? '/jobs/' + startJob : '/';
+  explorer.src = startEx || (startSeat ? '/agents/' + startSeat : startJob ? '/jobs/' + startJob : '/');
   if (startSeat) seat.value = startSeat;
   if (startJob) followedJob = startJob;
   showHouse(startJob ? '#/job/' + startJob : startSeat ? '#/seat/' + startSeat : '', true);

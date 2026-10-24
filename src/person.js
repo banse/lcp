@@ -134,6 +134,7 @@ export function drawPerson(g, p, t, L) {
 }
 
 export function drawDog(g, d, t, color) {
+  if (d.hidden) return;
   const x = Math.round(d.x), y = Math.round(d.y), f = d.face;
   const R = painter(g, x, y, f);
   const dark = shade(color, -0.35);

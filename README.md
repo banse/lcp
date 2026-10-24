@@ -154,14 +154,36 @@ The house beside explorer.imd.fun (`tools/side-by-side/`, local only): with the 
   does the demo); it opens `?seat=N` (and `&job=<id>` while a job is followed): this house on the left, the
   seat's agent page on the right. Inside that page (it posts `{type: 'lcp:split', on: true}`) the button says "Hide explorer"
   and posts `{type: 'lcp:hideExplorer', hash}`; the page then gives way to the house alone on the same address.
-  "Random active job" (only there; greyed out when the page counts no active jobs, `activeJobs` in its message) posts
+  "Random job" (only there; greyed out when the page counts no active jobs, `activeJobs` in its message) posts
   `{type: 'lcp:randomJob'}`: the page picks one, opens its job page on the right and has this house follow it. Both
   buttons sit at the right end of the seat row and wrap below it when the pane is narrow.
 - The logo (2026-10-24): a box like explorer.imd.fun's IMD mark (40 px, 1.5 px rules, the page's two colours) with
   pepe's head drawn as an outline (eyelids, pupils, mouth) and LCP; on hover the head turns like the explorer's diamond
   (`@keyframes globe`, off for reduced motion). It sits left of the Little Computer Pepes name, as the IMD box sits left
-  of Explorer.
+  of Explorer. It links to the original game, Little Computer People (Activision, 1985), on the Internet Archive, in a
+  new tab: https://archive.org/details/Little_Computer_People_1985_Activision
 - While a job is followed, the daily letter closes itself after 10 s (the house moves from seat to seat, and each new
   seat may write); a plain visit keeps it open until closed.
+- Talking to him (2026-10-24, like typing to the man in Little Computer People): the line under the seat row.
+  `src/talk.js` parses what is typed (pure, testable: `parse`, `answer`, the line tables, `stressCost`); `main.js`
+  (`talk`) acts on it. help lists what he understands.
+  - Page commands do what the buttons do, whatever he is doing: visit 1299, random seat, demo, sound on/off, legend,
+    follow job <id or its first 8 characters>, random job, show job <id>, show / hide explorer. In the
+    side-by-side page they go through it (`lcp:followJob`, the random job button), so the explorer moves too.
+  - Things to do: feed / pet the dog, piano, records, TV, cook, snack, read, work out, shower, brush, water the plants,
+    fire, window, nap, mail, paint, telescope, dance, touch grass (he goes out to the garden).
+  - Questions he looks up at the machine (he hurries there, types, answers): how long he lives here (the seat's
+    `pairedAt`, through the relay), stats, what he works on, model and effort, version, online, last task, owner,
+    the swarm (`/swarm` health and counts), active jobs, who is working, oracle, tokens, heartbeats, companies, parts.
+    When the explorer shows it, that page opens beside him: in the side-by-side page (`lcp:explore`, the house stays
+    where it is), or on its own the house opens that page (`?ex=<path>`); a hosted copy names the address instead.
+  - The culture: trade memecoins (a candle chart on his machine ends in one big red candle; he drags himself off
+    crying), buy imd (he runs, three times his pace, even from his work; BUY and green candles), sell imd (he ignores
+    you completely), gm, gn, wagmi, ngmi, wen moon (telescope), wen airdrop, rug, fud, hodl, gas, bridge, lfg, mint,
+    seed phrase (never), connect wallet (no), thanks, insults.
+  - Mood: while the seat works he refuses (a page he can point to opens anyway: look it up yourself); every request
+    stresses him (2 while working, 1 otherwise, 1 less with please, 2 more with an insult; 1 wears off every 15 s);
+    at 3 he sighs, at 6 he warns, at 8 he takes the dog out of the house for 90 s (BACK SOON on the door), and then
+    nobody answers. Asleep he mumbles, paused by his owner he is out.
 - Console helpers: `__house()`, `__live`, `__theme()`, `__demo`, `__follower` (`__live.onEvent({type: 'pause'})` plays an event through the page).
 - Fonts come from Google Fonts here; a swarm-hosted build must bundle them (the host allows same-origin scripts only).

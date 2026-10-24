@@ -182,7 +182,7 @@ export function machineInfo(rec) {
   const premium = !!(model && prem && prem.model === model), effort = premium ? prem.effort || null : null;
   return { runtime, provider: PROVIDER[runtime] || runtime.toUpperCase(), modelId: model, model: modelName(model),
     family: modelFamily(model), premium, effort, level: effort ? EFFORTS.indexOf(effort) : -1,
-    version: rt ? rt.version : null, step: t ? t.step : null };
+    version: rt ? rt.version : null, step: t ? t.step : null, jobId: t ? t.jobId : null };
 }
 
 function prevChanged(a, b) {

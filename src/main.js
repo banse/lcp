@@ -7,6 +7,7 @@ import { Sound } from './sound.js';
 import { CATEGORIES } from './mapping.js';
 import { THEMES, DEFAULT_THEME } from './themes/index.js';
 import { setPhase } from './world.js';
+import { parse, answer, pick, stressCost, HELP, BUSY, DO, EGG, UNKNOWN, ASLEEP, AWAY, OUT, WALKOUT, LOOKUP, STRESS } from './talk.js';
 
 const $ = (id) => document.getElementById(id);
 // built but switched off (the owner, 2026-10-24: "dont delete the cut features, we may add it back later"): the look
@@ -113,7 +114,7 @@ function visit(id, job = false) {
   house.onKnock = showKnock;
   feed = live; lastUpdate = null; hideKnock();
   if (!job) clearDiary();
-  hideLetter(); machineSaid = '';
+  hideLetter(); machineSaid = ''; talkState.stress = 0;
   setTitle('Who lives in Swarmstreet ', id);
   $('lede').textContent = job && followed ? followLede() : 'A little pepe lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.';
   $('seat-input').value = id;
@@ -180,6 +181,7 @@ function onFollow(e) {
 function startDemo() {
   stopFollowing();
   live.stop();
+  talkState.stress = 0;
   mode = 'demo'; seatId = 'demo';
   house = new House(4242, sound, theme); seatSeed = 4242; theme.setSeed(4242);
   house.onLetterDone = showLetter;
@@ -477,7 +479,7 @@ $('wallet-forget').addEventListener('click', () => {
 // On its own the house offers "Show on IMD Explorer" while that page answers: it opens with this house on the left and
 // the seat's agent page on the right (following the same job, if one is followed). Inside it, the page says so
 // ({type: 'lcp:split', on: true, activeJobs}) and the button hides the explorer again: the page goes back to this
-// house alone; "Random active job" asks the page to follow one (its job page left, this house following it).
+// house alone; "Random job" asks the page to follow one (its job page left, this house following it).
 // A hosted copy, or a page framed by anything else, shows neither.
 const SPLIT = 'http://127.0.0.1:8798/side-by-side';
 let inSplit = false, splitUp = false, activeJobs = 0;
@@ -507,6 +509,174 @@ $('explorer-btn').addEventListener('click', () => {
   const q = new URLSearchParams({ seat: String(seatId) });
   if (followed) q.set('job', followed.id);
   location.href = SPLIT + '?' + q;
+});
+
+// ---------- talking to him (talk.js) ----------
+// Page commands do what the buttons do, whatever he's busy with. The rest is up to him: while the seat works he
+// refuses (an explorer page he points you to opens anyway), every request stresses him a little (more while he works,
+// less with please, more with insults; it wears off in 15 s steps), and past STRESS.walkout he takes the dog out.
+// Questions he looks up at the machine; a page the explorer shows opens beside him (or the side-by-side page opens).
+const talkState = { stress: 0, at: 0, history: [], back: 0 };
+
+function talkReply(text, who = true) {
+  const p = $('talk-reply');
+  p.textContent = '';
+  if (text == null) return;
+  if (who) { const w = document.createElement('span'); w.className = 'who'; w.textContent = 'pepe: '; p.append(w); }
+  p.append(text);
+}
+
+function talkSay(cmd, text) {
+  talkReply(text);
+  addDiary(text ? `You: "${cmd}". He: ${text}` : `You: "${cmd}".`);
+}
+
+function talkContext() {
+  const sw = live.swarm || {};
+  return { seat: seatId, demo: mode === 'demo', detail: live.detail || {}, data: (live.prev && live.prev.data) || {},
+    health: sw.health || {}, counts: sw.counts || {}, machine: live.machine, update: live.update,
+    followed: followed ? followed.id : null, now: Date.now() };
+}
+
+function stressAdd(cost) {
+  const now = Date.now();
+  talkState.stress = Math.max(0, talkState.stress - Math.floor((now - talkState.at) / STRESS.decayMs) + cost);
+  talkState.at = now;
+  return talkState.stress;
+}
+
+// a page on explorer.imd.fun beside him: in the side-by-side page, or by opening it; false when neither is there
+function openExplorer(path) {
+  if (!path) return false;
+  if (inSplit) { window.parent.postMessage({ type: 'lcp:explore', path }, '*'); return true; }
+  if (splitUp && window.parent === window && mode === 'live' && seatId != null) {
+    const q = new URLSearchParams({ seat: String(seatId), ex: path });
+    if (followed) q.set('job', followed.id);
+    setTimeout(() => { location.href = SPLIT + '?' + q; }, 1800);      // a moment to read his answer first
+    return true;
+  }
+  return false;
+}
+
+async function activeJobList() {
+  try { const r = await fetch('/proxy/jobs/active', { cache: 'no-store' }); if (r.ok) return (await r.json()).jobs || []; } catch (e) { /* no relay */ }
+  return null;
+}
+
+// a job by its full id, or by the first characters of an active one
+async function resolveJob(id) {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) return id;
+  const hit = ((await activeJobList()) || []).filter((j) => j.id.startsWith(id));
+  return hit.length === 1 ? hit[0].id : null;
+}
+
+// following a job from the command line: what the buttons do (the side-by-side page shows it too)
+function followFromTalk(id) {
+  if (inSplit) window.parent.postMessage({ type: 'lcp:followJob', id }, '*');
+  else location.hash = '#/job/' + id;
+}
+
+async function pageCommand(it, cmd) {
+  const say = (text) => { talkReply(text); addDiary(`You: "${cmd}". ${text}`); };
+  switch (it.act) {
+    case 'help': talkReply(HELP, false); return;
+    case 'visit': visit(it.seat); say(`Seat #${it.seat}. You moved, I didn't.`); return;
+    case 'random': await randomBusySeat(); talkReply('A random busy seat. Same face, different bags.'); return;
+    case 'demo': $('demo-btn').click(); talkReply(mode === 'demo' ? 'The demo: a made-up seat. Like most roadmaps.' : 'Back to a real seat.'); return;
+    case 'sound': if (sound.on !== it.on) $('sound-btn').click(); say(it.on ? 'Sound on. Hope you like beeps.' : 'Sound off. Finally.'); return;
+    case 'legend': $('legend-btn').click(); return;
+    case 'hideExplorer':
+      if (inSplit) $('explorer-btn').click(); else say('There\'s no explorer to hide, ser.');
+      return;
+    case 'showExplorer':
+      if (inSplit) say('It\'s right there. Next to me. On the right.');
+      else if (!$('explorer-btn').hidden) $('explorer-btn').click();
+      else say('No explorer here: the side-by-side page isn\'t running (tools/side-by-side).');
+      return;
+    case 'randomJob': {
+      if (inSplit) { $('random-job-btn').click(); say('A random active job. Strap in.'); return; }
+      const list = await activeJobList();
+      if (!list) { say('Can\'t list the jobs without the local relay.'); return; }
+      if (!list.length) { say('No active jobs. The swarm is touching grass.'); return; }
+      followFromTalk(pick(list).id); say('Following a random active job. Strap in.');
+      return;
+    }
+    case 'follow': {
+      if (!it.job) { say('Which one? follow job <id>, or random job.'); return; }
+      const id = await resolveJob(it.job);
+      if (!id) { say(`No active job starts with ${it.job}. Typo, or it already shipped.`); return; }
+      followFromTalk(id); say(`Following job ${id.slice(0, 8)}. I'll tell the dog.`);
+      return;
+    }
+    default: return;
+  }
+}
+
+function egg(it, cmd, grumble) {
+  if (it.act === 'trade') {
+    house.event({ type: 'command', act: 'trade', done: () => talkSay(cmd, pick(EGG.tradeAfter)) });
+    talkSay(cmd, pick(EGG.trade)); return;
+  }
+  if (it.act === 'buy') {
+    house.event({ type: 'command', act: 'buy', done: () => talkSay(cmd, pick(EGG.buyAfter)) });
+    talkSay(cmd, pick(EGG.buy)); return;
+  }
+  const scene = { gm: 'gm', gn: 'nap', moon: 'moon', lfg: 'lfg', mint: 'paint', pump: 'exercise', seed: 'nope', wallet: 'nope',
+    nothing: 'telescope' }[it.act];
+  if (scene) house.event({ type: 'command', act: scene });
+  else house.event({ type: 'flash', icon: it.act === 'thanks' ? 'heart' : ['insult', 'ngmi', 'fud'].includes(it.act) ? 'bang' : 'dots' });
+  talkSay(cmd, pick(EGG[it.act] || UNKNOWN) + (it.act === 'thanks' ? '' : grumble));
+}
+
+async function talk(raw) {
+  const cmd = String(raw || '').trim().slice(0, 160);
+  if (!cmd) return;
+  talkState.history.push(cmd); talkState.back = 0;
+  const it = parse(cmd);
+  if (it.kind === 'page') return pageCommand(it, cmd);
+  if (!house) { talkReply('Nobody lives here yet. Pick a seat first.'); return; }
+  const s = house.state;
+  if (house.walkout) return talkSay(cmd, pick(OUT));
+  if (s.away) return talkSay(cmd, AWAY);
+  if (it.kind === 'egg' && it.act === 'sell') { talkReply(null); addDiary(`You: "${cmd}".`); return; }   // he doesn't even look up
+  if (s.asleep) return talkSay(cmd, pick(ASLEEP));
+  const busy = s.working && !(it.kind === 'egg' && it.act === 'buy');                                  // IMD: he drops everything
+  const lvl = stressAdd(stressCost(it, busy));
+  if (lvl >= STRESS.walkout) {
+    talkState.stress = 0;
+    house.event({ type: 'walkout', seconds: STRESS.outSeconds });
+    return talkSay(cmd, pick(WALKOUT));
+  }
+  if (busy) {
+    const tier = lvl >= STRESS.warn ? 2 : lvl >= STRESS.grumpy ? 1 : 0;
+    house.event({ type: 'flash', icon: tier ? 'bang' : 'dots' });
+    let text = pick(BUSY[tier]);
+    if (it.kind === 'ask') { const a = answer(it, talkContext()); if (a.explorer && openExplorer(a.explorer)) text += ' Look it up yourself, it\'s on the explorer.'; }
+    return talkSay(cmd, text);
+  }
+  const grumble = lvl >= STRESS.warn ? ' (Last one. I mean it.)' : lvl >= STRESS.grumpy ? ' (Sigh.)' : '';
+  if (it.kind === 'ask') {
+    if (it.topic === 'job' && it.job && it.job.length < 36) it.job = (await resolveJob(it.job)) || it.job;
+    talkReply(LOOKUP, false);
+    house.event({ type: 'command', act: 'lookup', done: () => {
+      const a = answer(it, talkContext()), opened = !!a.explorer && openExplorer(a.explorer);
+      talkSay(cmd, a.text + (a.explorer && !opened ? ` (explorer.imd.fun${a.explorer})` : '') + grumble);
+    } });
+    return;
+  }
+  if (it.kind === 'do') { house.event({ type: 'command', act: it.act }); return talkSay(cmd, DO[it.act] + grumble); }
+  if (it.kind === 'egg') return egg(it, cmd, grumble);
+  house.event({ type: 'flash', icon: 'ask' });
+  return talkSay(cmd, pick(UNKNOWN));
+}
+
+$('talk-form').addEventListener('submit', (e) => { e.preventDefault(); const v = $('talk-input').value; $('talk-input').value = ''; talk(v); });
+$('talk-input').addEventListener('keydown', (e) => {                // the shell's arrows: earlier commands
+  const h = talkState.history;
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  e.preventDefault();
+  talkState.back = Math.max(0, Math.min(h.length, talkState.back + (e.key === 'ArrowUp' ? 1 : -1)));
+  $('talk-input').value = talkState.back ? h[h.length - talkState.back] : '';
 });
 
 // ---------- the rest of the controls ----------
