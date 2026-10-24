@@ -20,7 +20,7 @@ and is remembered per browser.
 - **IMD** (default since 2026-10-24, `src/themes/imd.js`): imd.fun's look, black page, the house as an engraved black
   and white cut-away with green screens (a machine wall in the study, an oscilloscope, a CRT), IBM Plex Mono, the
   diary as a terminal. The pepe and the dog are imd.fun's sprite sheets (`assets/imd/`, see its `NOTICE.md`: the
-  IMD project's art, not ours) with imd.fun's moves: he looks up, scratches his head, shuffles, turns to the front,
+  IMD project's art, used with IMD's agreement of 2026-10-24) with imd.fun's moves: he looks up, scratches his head, shuffles, turns to the front,
   cheers; the dog naps (breathing), glances, tilts, wags and walks. He stands with his back to us at the thing he
   works on, as on imd.fun; in the armchair only his head shows over the back, in bed the back of his head on the
   pillow. A portrait beside the house shows his face from the front (our own vector drawing, `src/themes/imd-face.js`)

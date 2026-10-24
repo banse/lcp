@@ -2,8 +2,8 @@
 
 `pepe.webp` (19 frames of 240 x 284) and `dog.webp` (23 frames of 168 x 120) are the sprite sheets of the imd.fun front
 page (`/_next/static/media/pepe.f78b55a7.webp`, `dog.426770e2.webp`), copied on 2026-10-24 for this local test build.
-They are the IMD project's art, not ours, and Pepe is Matt Furie's character. Ask the dev before publishing anything that
-contains them.
+They are the IMD project's art, not ours, and Pepe is Matt Furie's character. IMD agreed to their use here: the owner,
+2026-10-24, "imd agreed".
 
 Frame names, in order, as imd.fun's script names them:
 
