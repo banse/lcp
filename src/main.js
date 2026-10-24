@@ -229,18 +229,6 @@ function onStatus(s) {
   if (s.verifierDown) bits.push('The swarm\'s checker is down.');
   bits.push((s.live ? 'Read ' : 'Demo data, ') + s.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.');
   $('st-line').textContent = bits.join(' ');
-  $('st-worker').textContent = workerLine(s);
-}
-
-function workerLine(s) {
-  if (s.seat === 'demo') return 'Worker: demo data.';
-  if (!s.detailRead) return 'Worker version: this page can\'t read the seat record from here (no relay, no CORS).';
-  const u = s.update, v = s.version || 'unknown';
-  if (!u) return `Worker ${v}. The newest release could not be read.`;
-  const age = u.latestAgeH < 1 ? 'under an hour' : Math.round(u.latestAgeH) + ' h';
-  if (!u.needs && u.behind === 0) return `Worker ${v}, the newest release (out ${age}).`;
-  if (!u.needs) return `Worker ${v}. A newer one (${u.latest}) came out ${age} ago; seats that update themselves catch up between tasks.`;
-  return `Worker ${v}: needs an update. ${u.behind != null ? u.behind + ' releases' : 'More than 40 releases'} behind the newest (${u.latest}, out ${age}).`;
 }
 
 function ago(ms) {
