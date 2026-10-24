@@ -109,6 +109,12 @@ code { font-family: var(--type); font-size: 0.95em; }
 .legend-head h2 { margin: 0; }
 .quiet-ink { background: transparent; color: var(--paper-ink); border-color: var(--wood-l); }
 
+/* the header: the name on the left, the look and settings on the right (as imd.fun's top bar) */
+.topbar { max-width: 1000px; margin: 0 auto 26px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; }
+.brand { font-weight: 600; font-size: 1.15rem; color: var(--ink); text-decoration: none; padding: 6px 12px; border: 2px solid var(--wood-l); }
+.brand:hover { color: var(--lamp); }
+.brand:focus-visible { outline: 3px solid var(--lamp); outline-offset: 2px; }
+.diary-col h2, .counters h2 { min-height: 1.4em; }
 .looks { display: inline-flex; gap: 0; }
 .looks button + button { border-left-width: 0; }
 
@@ -144,6 +150,9 @@ html[data-look="imd"] button:focus-visible, html[data-look="imd"] input:focus-vi
 html[data-look="imd"] input[type=number] { background: #000; color: var(--ink); border: 1.5px solid var(--ink); border-radius: 0; }
 html[data-look="imd"] .wallet { background: var(--term); border: 1.5px solid var(--wood-l); }
 html[data-look="imd"] .door { background: transparent; color: var(--ink); }
+html[data-look="imd"] .brand { background: var(--ink); color: #000; border: 1.5px solid var(--ink); font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; padding: 10px 16px; }
+html[data-look="imd"] .brand:hover { color: #000; background: #e6e6e6; }
+html[data-look="imd"] .topbar { padding-bottom: 18px; border-bottom: 1px solid #141414; }
 html[data-look="imd"] .diary { background: var(--term); border: 1.5px solid var(--term-edge); padding: 12px 14px; }
 html[data-look="imd"] .diary ol { font-size: 12.5px; }
 html[data-look="imd"] .diary li { grid-template-columns: 1rem 3.4rem 1fr; }

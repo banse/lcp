@@ -3,12 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Seat house (local test)</title>
+<title>Little Computer Pepes</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Courier+Prime&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<header class="topbar">
+  <a class="brand" href="./">Little Computer Pepes</a>
+  <nav class="toggles" aria-label="Look and settings">
+    <div class="looks" role="group" aria-label="Look">
+      <button type="button" class="quiet" data-look-btn="imd" aria-pressed="false">IMD</button>
+      <button type="button" class="quiet" data-look-btn="pixel" aria-pressed="false">Pixel</button>
+    </div>
+    <button type="button" id="wallet-btn">Connect wallet</button>
+    <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog">Legend</button>
+    <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
+    <button type="button" id="sound-btn" class="quiet" aria-pressed="false">Sound off</button>
+  </nav>
+</header>
 <main class="page">
   <header class="head">
     <h1 id="title">Who lives in Swarmstreet?</h1>
@@ -34,16 +47,6 @@
       <button type="submit">Visit</button>
       <button type="button" id="random-btn" class="quiet">Random busy seat</button>
     </form>
-    <div class="toggles">
-      <div class="looks" role="group" aria-label="Look">
-        <button type="button" class="quiet" data-look-btn="imd" aria-pressed="false">IMD</button>
-        <button type="button" class="quiet" data-look-btn="pixel" aria-pressed="false">Pixel</button>
-      </div>
-      <button type="button" id="wallet-btn">Connect wallet</button>
-      <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog">Legend</button>
-      <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
-      <button type="button" id="sound-btn" class="quiet" aria-pressed="false">Sound off</button>
-    </div>
   </section>
 
   <section id="wallet-panel" class="wallet" hidden aria-live="polite">
@@ -54,9 +57,11 @@
   </section>
 
   <section class="below">
-    <div class="diary">
+    <div class="diary-col">
       <h2>Diary</h2>
-      <ol id="diary" aria-live="polite"><li class="empty">What he does will show up here.</li></ol>
+      <div class="diary">
+        <ol id="diary" aria-live="polite"><li class="empty">What he does will show up here.</li></ol>
+      </div>
     </div>
     <div class="side">
       <div class="counters">

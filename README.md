@@ -1,4 +1,6 @@
-# lcp: the seat house
+# Little Computer Pepes (lcp)
+
+The name is the owner's (2026-10-24); the repo stays `lcp`.
 
 A browser game that looks like the 1985 cut-away house of *Little Computer People*, with our own art at
 480 x 320 game pixels (scaled 2x on desktop). One little man lives the working day of one IMD swarm seat:
