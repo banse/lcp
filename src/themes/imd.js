@@ -12,6 +12,9 @@ const C = {
   greenL: '#88d090', red: '#ff6b62', redD: '#b3261e', amber: '#e0a92a', blue: '#9fd3ff',
 };
 const MONO = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+// by day the page behind the house is the window blue, with an ink sun and light grey clouds (the owner's pick of
+// four previews, 2026-10-24); dawn, dusk and night keep imd.fun's black page
+const DAY = { page: C.blue, line: C.ink, glass: C.blue, cloud: '#e2e2de', sun: C.paper };
 
 // ---------- small drawing helpers (world units) ----------
 const R = (a, b) => a + Math.random() * (b - a);
@@ -236,6 +239,7 @@ function shell(g) {
   }
   for (const [y0, y1] of [[52, 126], [132, 208], [214, 290]]) {
     for (const x of [196, 356]) {
+      box(g, x, y1 - 36, 4, 36, C.paper2, 0); hatch(g, x, y1 - 36, 4, 36, 1, 0.45);   // the doorway's passage
       box(g, x, y0, 4, y1 - y0 - 36, C.wall, 0); ln(g, x, y0, x, y1 - 36, 0.5); ln(g, x + 4, y0, x + 4, y1 - 36, 0.5);
       box(g, x - 1, y1 - 37, 6, 2, C.ink, 0);
     }
@@ -395,9 +399,11 @@ export const imd = {
   draw(g, house, tick) {
     const now = performance.now(), phase = skyPhase(new Date());
     g.setTransform(S, 0, 0, S, 0, 0);
-    g.fillStyle = C.page; g.fillRect(0, 0, W, H);
-    sky(g, phase, now);
-    glass(g, phase, now);
+    const day = phase === 'day' ? DAY : null;
+    g.fillStyle = day ? day.page : C.page; g.fillRect(0, 0, W, H);
+    if (day) dots(g, 0, 0, W, 296, 3.2, 0.3, 0.16);
+    sky(g, phase, now, day);
+    glass(g, phase, now, day);
     g.drawImage(this.layer, 0, 0, W, H);
     if (!house) return;
     const s = house.state, m = house.man;
@@ -491,7 +497,35 @@ function drawCarrier(g, c) {                                    // the mail carr
 }
 
 // ---------- what changes every frame ----------
-function sky(g, phase, now) {
+// a cloud: overlapping puffs with one outline around them all
+function cloud(g, x, y, w, ink, fill) {
+  const puffs = [[0, 0, w * 0.22], [w * 0.24, -w * 0.1, w * 0.26], [w * 0.52, -w * 0.02, w * 0.22], [w * 0.72, w * 0.04, w * 0.16]];
+  g.save(); g.lineWidth = 1.6; g.strokeStyle = ink;
+  for (const [dx, dy, r] of puffs) { g.beginPath(); g.arc(x + dx, y + dy, r, 0, Math.PI * 2); g.stroke(); }
+  g.fillStyle = fill;
+  for (const [dx, dy, r] of puffs) { g.beginPath(); g.arc(x + dx, y + dy, r, 0, Math.PI * 2); g.fill(); }
+  g.beginPath(); g.moveTo(x - w * 0.12, y + w * 0.12); g.lineTo(x + w * 0.8, y + w * 0.12); g.lineWidth = 0.4; g.globalAlpha = 0.5; g.stroke();
+  g.restore();
+}
+
+function sun(g, x, y, ink, fill, now) {
+  g.save(); g.lineWidth = 0.9; g.strokeStyle = ink;
+  g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.fillStyle = fill; g.fill(); g.stroke();
+  const turn = now / 20000;
+  for (let i = 0; i < 12; i++) { const t = turn + i * Math.PI / 6; g.beginPath(); g.moveTo(x + Math.cos(t) * 11, y + Math.sin(t) * 11); g.lineTo(x + Math.cos(t) * (i % 2 ? 13.5 : 15.5), y + Math.sin(t) * (i % 2 ? 13.5 : 15.5)); g.stroke(); }
+  g.restore();
+}
+
+function sky(g, phase, now, day) {
+  if (phase === 'day') {
+    const ink = day.line, fill = day.cloud;
+    sun(g, 30, 30, ink, day.sun, now);
+    const drift = (now / 900) % 60;
+    cloud(g, 92 + drift * 0.6, 22, 34, ink, fill);
+    cloud(g, 372 + drift * 0.4, 18, 42, ink, fill);
+    cloud(g, 6 + drift * 0.3, 150, 26, ink, fill);
+    return;
+  }
   if (phase !== 'night') return;
   const rnd = seeded(3);
   g.fillStyle = '#ffffff';
@@ -505,7 +539,7 @@ function sky(g, phase, now) {
   g.beginPath(); g.arc(34, 25, 8, 0, Math.PI * 2); g.fillStyle = C.page; g.fill();
 }
 
-function glass(g, phase, now) {
+function glass(g, phase, now, day) {
   for (const [x0, y0, x1, y1] of WINDOWS) {
     const w = x1 - x0, h = y1 - y0;
     if (phase === 'night') {
@@ -514,7 +548,7 @@ function glass(g, phase, now) {
       for (let i = 0; i < 3; i++) { g.globalAlpha = 0.5 + 0.5 * Math.sin(now / 700 + i * 2 + x0); g.fillRect(x0 + ((i * 11 + x0) % w), y0 + ((i * 7 + y0) % h), 0.6, 0.6); }
       g.globalAlpha = 1;
     } else {
-      box(g, x0, y0, w, h, phase === 'day' ? C.blue : '#e8b98a', 0);
+      box(g, x0, y0, w, h, day ? day.glass : '#e8b98a', 0);
       g.save(); g.globalAlpha = 0.55; g.strokeStyle = '#ffffff'; g.lineWidth = 1.2;
       g.beginPath(); g.moveTo(x0 + w * 0.2, y1); g.lineTo(x0 + w * 0.6, y0); g.moveTo(x0 + w * 0.45, y1); g.lineTo(x0 + w * 0.8, y0); g.stroke(); g.restore();
     }

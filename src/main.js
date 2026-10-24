@@ -392,3 +392,4 @@ route();
 requestAnimationFrame(frame);
 window.__house = () => house;   // for local testing in the console
 window.__live = live;
+window.__theme = () => theme;

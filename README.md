@@ -17,7 +17,8 @@ own drawing, where its things stand, and its own mapping from task categories to
 start with the owner's mapping of 2026-10-24 and can change on their own). The switch sits next to the other controls
 and is remembered per browser.
 
-- **IMD** (default since 2026-10-24, `src/themes/imd.js`): imd.fun's look, black page, the house as an engraved black
+- **IMD** (default since 2026-10-24, `src/themes/imd.js`): imd.fun's look, a black page at night, dawn and dusk and a
+  window-blue page with an ink sun and light grey clouds by day, the house as an engraved black
   and white cut-away with green screens (a machine wall in the study, an oscilloscope, a CRT), IBM Plex Mono, the
   diary as a terminal. The pepe and the dog are imd.fun's sprite sheets (`assets/imd/`, see its `NOTICE.md`: the
   IMD project's art, used with IMD's agreement of 2026-10-24) with imd.fun's moves: he looks up, scratches his head, shuffles, turns to the front,
