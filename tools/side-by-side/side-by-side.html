@@ -25,12 +25,12 @@
          font: 13px/1.4 'IBM Plex Mono', ui-monospace, Menlo, monospace; }
 
   /* the bar: explorer name left, the controls, the house name right; on a small screen the names first, then the controls */
-  header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "explorer controls house";
+  header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "house controls explorer";
            align-items: center; gap: 6px 16px; border-bottom: 1px solid var(--rule);
            padding: 6px max(12px, env(safe-area-inset-right, 0px)) 6px max(12px, env(safe-area-inset-left, 0px)); }
   header .side { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
-  header .ex-side { grid-area: explorer; }
-  header .house-side { grid-area: house; flex-direction: row-reverse; }
+  header .ex-side { grid-area: explorer; flex-direction: row-reverse; }
+  header .house-side { grid-area: house; }
   header b { font-weight: 600; white-space: nowrap; }
   header a { color: var(--muted); white-space: nowrap; }
   header a:hover, header a:focus-visible { color: var(--ink); }
@@ -44,10 +44,10 @@
   button:disabled { opacity: 0.4; cursor: default; background: var(--ink); color: var(--paper); }
   label { color: var(--muted); display: flex; align-items: center; gap: 4px; }
 
-  /* the two panes and the bar between them; --split-x is the explorer's share of the width, --split-y the house's share
-     of the height when they stack */
+  /* the two panes and the bar between them, the house left and the explorer right (owner, 2026-10-24); --split-x is the
+     house's share of the width, --split-y its share of the height when they stack */
   main { display: grid; min-height: 0; grid-template-columns: minmax(0, var(--split-x, 50%)) 9px minmax(0, 1fr);
-         grid-template-areas: "explorer divider house"; }
+         grid-template-areas: "house divider explorer"; }
   .pane { position: relative; min-width: 0; min-height: 0; }
   .ex-pane { grid-area: explorer; }
   .house-pane { grid-area: house; }
@@ -68,8 +68,7 @@
 
   @media (max-width: 760px) {
     header { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "house explorer" "controls controls"; gap: 6px 12px; }
-    header .house-side { flex-direction: row; }
-    header .ex-side { justify-content: flex-end; }
+    header .ex-side { flex-direction: row; justify-content: flex-end; }
     .controls { justify-content: flex-start; gap: 6px 14px; }
     #job-form { flex: 1 1 100%; }
     #job-form select { flex: 1 1 0; width: 0; min-width: 0; max-width: none; }   /* else it is as wide as its longest option */
@@ -85,7 +84,7 @@
 </head>
 <body>
 <header>
-  <div class="side ex-side"><b>IMD Explorer</b><a id="open-explorer" href="https://explorer.imd.fun/" target="_blank" rel="noreferrer" title="Open this page on explorer.imd.fun">open</a></div>
+  <div class="side house-side"><b>Little Computer Pepes</b><a id="open-house" href="http://127.0.0.1:8795/" target="_blank" rel="noreferrer" title="Open the house on its own">open</a></div>
   <div class="controls">
     <form id="seat-form">
       <span>Seat #</span><input id="seat" type="number" min="0" max="1999" inputmode="numeric" aria-label="Seat number">
@@ -98,12 +97,9 @@
     </form>
     <label title="When the explorer opens an agent or an active job, the house shows that seat or follows that job"><input id="follow" type="checkbox" checked> House follows the explorer</label>
   </div>
-  <div class="side house-side"><b>Little Computer Pepes</b><a id="open-house" href="http://127.0.0.1:8795/" target="_blank" rel="noreferrer" title="Open the house on its own">open</a></div>
+  <div class="side ex-side"><b>IMD Explorer</b><a id="open-explorer" href="https://explorer.imd.fun/" target="_blank" rel="noreferrer" title="Open this page on explorer.imd.fun">open</a></div>
 </header>
 <main>
-  <div class="pane ex-pane"><iframe id="explorer" title="IMD Explorer"></iframe></div>
-  <div class="divider" id="divider" role="separator" tabindex="0" aria-label="Resize the two panes" aria-valuemin="15" aria-valuemax="85"
-       title="Drag to resize; double-click for the default split"></div>
   <div class="pane house-pane">
     <iframe id="house" title="Little Computer Pepes"></iframe>
     <div class="down" id="house-down" hidden>
@@ -112,6 +108,9 @@
       <p>This pane loads it as soon as it answers.</p>
     </div>
   </div>
+  <div class="divider" id="divider" role="separator" tabindex="0" aria-label="Resize the two panes" aria-valuemin="15" aria-valuemax="85"
+       title="Drag to resize; double-click for the default split"></div>
+  <div class="pane ex-pane"><iframe id="explorer" title="IMD Explorer"></iframe></div>
 </main>
 <script>
   const LCP = 'http://127.0.0.1:8795/';

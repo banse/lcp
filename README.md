@@ -57,7 +57,7 @@ The house beside explorer.imd.fun (`tools/side-by-side/`, local only): with the 
 - explorer.imd.fun sends `frame-ancestors 'none'`, so `side_by_side.py` passes it through 127.0.0.1 (GET and HEAD only,
   no cookies either way) without that directive, and hides its Launch, $IMD, Docs, Telegram, Connect and menu; its
   light/dark switch stays and decides the look of both panes. `/side-by-side/jobs` lists the active jobs.
-- The page: the explorer left, the house right, a divider to drag (both stacked, house on top, below 760 px). Seat #
+- The page: the house left, the explorer right, a divider to drag (both stacked, house on top, below 760 px). Seat #
   shows a seat in both; Job + Follow Job follow an active job; an agent or active job opened in the explorer, or a
   step row of the followed job, moves the house too ("House follows the explorer").
 
@@ -151,11 +151,17 @@ The house beside explorer.imd.fun (`tools/side-by-side/`, local only): with the 
 - The IMD Explorer beside the house (2026-10-24): the seat row has a button for the local side-by-side page
   (`tools/side-by-side/`, `http://127.0.0.1:8798/side-by-side`, see Run). On its own the house
   shows "Show on IMD Explorer" while that page answers (a `no-cors` probe every 60 s; a hosted copy never shows it, nor
-  does the demo); it opens `?seat=N` (and `&job=<id>` while a job is followed): the seat's agent page on the left,
-  this house on the right. Inside that page (it posts `{type: 'lcp:split', on: true}`) the button says "Hide explorer"
+  does the demo); it opens `?seat=N` (and `&job=<id>` while a job is followed): this house on the left, the
+  seat's agent page on the right. Inside that page (it posts `{type: 'lcp:split', on: true}`) the button says "Hide explorer"
   and posts `{type: 'lcp:hideExplorer', hash}`; the page then gives way to the house alone on the same address.
   "Random active job" (only there; greyed out when the page counts no active jobs, `activeJobs` in its message) posts
-  `{type: 'lcp:randomJob'}`: the page picks one, opens its job page on the left and has this house follow it. Both
+  `{type: 'lcp:randomJob'}`: the page picks one, opens its job page on the right and has this house follow it. Both
   buttons sit at the right end of the seat row and wrap below it when the pane is narrow.
+- The logo (2026-10-24): a box like explorer.imd.fun's IMD mark (40 px, 1.5 px rules, the page's two colours) with
+  pepe's head drawn as an outline (eyelids, pupils, mouth) and LCP; on hover the head turns like the explorer's diamond
+  (`@keyframes globe`, off for reduced motion). It sits left of the Little Computer Pepes name, as the IMD box sits left
+  of Explorer.
+- While a job is followed, the daily letter closes itself after 10 s (the house moves from seat to seat, and each new
+  seat may write); a plain visit keeps it open until closed.
 - Console helpers: `__house()`, `__live`, `__theme()`, `__demo`, `__follower` (`__live.onEvent({type: 'pause'})` plays an event through the page).
 - Fonts come from Google Fonts here; a swarm-hosted build must bundle them (the host allows same-origin scripts only).

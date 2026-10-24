@@ -409,9 +409,13 @@ function showLetter(why, late) {
   $('letter').hidden = false;
   addDiary(n ? n.diary : 'He typed you a letter.');
   pendingLetter = null;
+  // following a job the house moves from seat to seat, and each new seat may write: the letter closes itself after 10 s
+  clearTimeout(letterTimer);
+  if (followed) letterTimer = setTimeout(() => { $('letter').hidden = true; }, 10000);
 }
-function hideLetter() { $('letter').hidden = true; pendingLetter = null; }
-$('letter-close').addEventListener('click', () => { $('letter').hidden = true; });
+let letterTimer = null;
+function hideLetter() { $('letter').hidden = true; pendingLetter = null; clearTimeout(letterTimer); }
+$('letter-close').addEventListener('click', () => { $('letter').hidden = true; clearTimeout(letterTimer); });
 $('letter').addEventListener('click', (e) => { if (e.target === $('letter')) $('letter').hidden = true; });   // a click beside it
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('letter').hidden) $('letter').hidden = true; });
 
@@ -470,8 +474,8 @@ $('wallet-forget').addEventListener('click', () => {
 });
 
 // ---------- the IMD Explorer beside the house: the local side-by-side page (tools/side-by-side/, port 8798) ----------
-// On its own the house offers "Show on IMD Explorer" while that page answers: it opens with the seat's agent page on
-// the left and this house on the right (following the same job, if one is followed). Inside it, the page says so
+// On its own the house offers "Show on IMD Explorer" while that page answers: it opens with this house on the left and
+// the seat's agent page on the right (following the same job, if one is followed). Inside it, the page says so
 // ({type: 'lcp:split', on: true, activeJobs}) and the button hides the explorer again: the page goes back to this
 // house alone; "Random active job" asks the page to follow one (its job page left, this house following it).
 // A hosted copy, or a page framed by anything else, shows neither.

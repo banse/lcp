@@ -12,7 +12,7 @@ the Explorer tab and the light/dark switch stay, the switch at every width (the 
 menu below 640px). The explorer keeps its mode in localStorage `imd-theme`, which here is this server's origin, so
 the two-pane page reads it and dresses itself and the house the same way.
 
-/side-by-side is the two-pane page (side-by-side.html next to this file). Its right pane is the lcp server at
+/side-by-side is the two-pane page (side-by-side.html next to this file). Its left pane is the lcp server at
 127.0.0.1:8795, which runs on its own (`python3 -I serve.py . 8795` in the lcp checkout); /side-by-side/lcp says
 whether it answers. /side-by-side/jobs lists the jobs not over yet (state not completed, blocked, failed or
 cancelled) among the newest 200 of api.imd.fun/jobs, which has no state filter and no CORS; cached 15 s.

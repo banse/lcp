@@ -122,6 +122,21 @@ code { font-family: var(--type); font-size: 0.95em; }
 .brand { font-weight: 600; font-size: 1.15rem; color: var(--ink); text-decoration: none; padding: 6px 12px; border: 2px solid var(--wood-l); }
 .brand:hover { color: var(--lamp); }
 .brand:focus-visible { outline: 3px solid var(--lamp); outline-offset: 2px; }
+/* the logo, made like explorer.imd.fun's IMD mark (2026-10-24): a box with pepe's head, a rule and LCP, in the page's
+   own two colours; on hover the head turns like the explorer's diamond (a globe turn every 2.4 s) */
+.brand-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.logo { display: flex; align-items: stretch; height: 40px; border: 1.5px solid var(--ink); background: var(--night);
+  color: var(--ink); text-decoration: none; transition: background-color 0.2s; }
+.logo:hover { background: color-mix(in srgb, var(--ink) 14%, var(--night)); }
+.logo:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+.logo-mark { display: flex; align-items: center; justify-content: center; width: calc(40px - 1.5px);
+  border-right: 1.5px solid var(--ink); perspective: 60px; }
+.logo-mark svg { display: block; }
+.logo:hover .logo-mark svg, .logo:focus-visible .logo-mark svg { animation: 2.4s linear infinite globe; }
+.logo-label { display: flex; align-items: center; font-size: 13px; font-weight: 600; letter-spacing: 0.3em;
+  padding: 0 calc(16px - 0.3em) 0 16px; }
+@keyframes globe { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
+@media (prefers-reduced-motion: reduce) { .logo:hover .logo-mark svg, .logo:focus-visible .logo-mark svg { animation: none; } }
 .diary-col h2, .counters h2 { min-height: 1.4em; }
 .looks { display: inline-flex; gap: 0; }
 .looks button + button { border-left-width: 0; }
