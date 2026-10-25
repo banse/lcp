@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "repository": "banse/lcp",
+  "branch": "site",
+  "sourceRepository": "banse/swarmlab",
+  "sourcePath": "imd/lcp",
+  "sourceCommit": "98410e45bb435a7598733072034f68d655dbf74c",
+  "sourceDirty": false,
+  "inputHash": "21d1755b7dbd88f2db77274658c0b357c56e1fa054e1de6e770a24c0a98f6599",
+  "version": "2026-10-25+98410e45",
+  "generatedAt": "2026-10-25T03:41:16+00:00",
+  "launchPools": {
+    "count": 453,
+    "generatedAt": "2026-10-25T03:41:15+00:00"
+  }
+}

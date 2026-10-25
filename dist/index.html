@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Little Computer Pepes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Courier+Prime&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<!-- light or dark before the first paint (main.js keeps it up to date): this tab's choice, else this browser's, else dark -->
+<script>try { var m = sessionStorage.getItem('lcp:mode') || localStorage.getItem('lcp:mode'); if (m === 'light' || m === 'dark') document.documentElement.dataset.mode = m; } catch (e) {}</script>
+<!-- the LCP button's pepe head, white on black -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Cg transform='translate(1.2 0.8) scale(0.85)' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M2.2 6.6 A3 3 0 0 1 7.8 4.6 Q8 5.2 8.2 4.6 A3 3 0 0 1 13.8 6.6 C15.3 8.2 15 11.4 12.8 12.8 Q8 15.2 3.2 12.8 C1 11.4 0.7 8.2 2.2 6.6 Z'/%3E%3Cpath d='M2.5 5.6 Q5 4.6 7.6 5.2 M8.4 5.2 Q11 4.6 13.5 5.6'/%3E%3Cpath d='M3.4 10 Q8 12.8 12.6 10'/%3E%3Ccircle cx='5.9' cy='6.4' r='0.9' fill='%23fff' stroke='none'/%3E%3Ccircle cx='11.9' cy='6.4' r='0.9' fill='%23fff' stroke='none'/%3E%3C/g%3E%3C/svg%3E">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand-row">
+    <a class="logo" href="https://archive.org/details/Little_Computer_People_1985_Activision" target="_blank" rel="noopener noreferrer"
+      title="Little Computer People (Activision, 1985) on the Internet Archive" aria-label="LCP: the original Little Computer People on the Internet Archive (opens in a new tab)"><span class="logo-mark" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path vector-effect="non-scaling-stroke" d="M2.2 6.6 A3 3 0 0 1 7.8 4.6 Q8 5.2 8.2 4.6 A3 3 0 0 1 13.8 6.6 C15.3 8.2 15 11.4 12.8 12.8 Q8 15.2 3.2 12.8 C1 11.4 0.7 8.2 2.2 6.6 Z"/><path vector-effect="non-scaling-stroke" d="M2.5 5.6 Q5 4.6 7.6 5.2 M8.4 5.2 Q11 4.6 13.5 5.6"/><path vector-effect="non-scaling-stroke" d="M3.4 10 Q8 12.8 12.6 10"/><circle cx="5.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/><circle cx="11.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/></svg></span><span class="logo-label">LCP</span></a>
+    <a class="brand" href="./">Little Computer Pepes</a>
+  </div>
+  <nav class="toggles" aria-label="Look and settings">
+    <div class="looks" role="group" aria-label="Look" data-feature="lookSwitch">
+      <button type="button" class="quiet" data-look-btn="imd" aria-pressed="false">IMD</button>
+      <button type="button" class="quiet" data-look-btn="pixel" aria-pressed="false">LCP</button>
+    </div>
+    <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog">Legend</button>
+    <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
+    <button type="button" id="sound-btn" class="quiet" aria-pressed="false">Sound off</button>
+    <!-- like explorer.imd.fun's switch: the button names the other mode -->
+    <button type="button" id="mode-btn" class="quiet mode-btn" aria-label="switch between light and dark" title="light / dark"><svg
+      viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linecap="round" stroke-linejoin="round"><path class="moon" d="M15.5 12.5A6.5 6.5 0 0 1 7.5 4.5a6.5 6.5 0 1 0 8 8z"/><g
+      class="sun"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/></g></svg><span>Light mode</span></button>
+    <button type="button" id="wallet-btn" data-feature="wallet">Connect wallet</button>
+  </nav>
+</header>
+<main class="page">
+  <header class="head">
+    <h1 id="title">Who lives in Swarmstreet?</h1>
+    <p id="lede">A little pepe lives the working day of one IMD swarm seat. Everything he does comes from the seat's public record.</p>
+  </header>
+
+  <!-- one row (owner, 2026-10-25): a seat, a job, the explorer at the right end; it wraps on narrow screens -->
+  <section class="controls" aria-label="Choose a seat or a job">
+    <form id="seat-form" class="seat-form">
+      <label for="seat-input">Seat</label>
+      <input id="seat-input" type="number" min="0" max="1999" inputmode="numeric" placeholder="0–1999">
+      <button type="submit">Visit</button>
+      <button type="button" id="random-btn" class="quiet" aria-label="Random seat" title="A random busy seat">Random</button>
+    </form>
+    <!-- following a job: the active ones (hosted: the ones the swarm's live feed shows, and open oracle questions) -->
+    <form id="job-form" class="seat-form job-form">
+      <label for="job-select">Job</label>
+      <select id="job-select"><option value="">Reading the active jobs…</option></select>
+      <button type="submit" id="follow-job-btn" class="quiet">Follow job</button>
+    </form>
+    <span class="split-actions">
+      <button type="button" id="random-job-btn" class="quiet" hidden>Random job</button>
+      <button type="button" id="explorer-btn" class="quiet" hidden title="This seat, or the followed job, on explorer.imd.fun">IMD Explorer</button>
+    </span>
+    <div id="wallet-panel" class="wallet" hidden aria-live="polite">
+      <p id="wallet-note"></p>
+      <div id="wallet-choices" class="doors"></div>
+      <div id="wallet-seats" class="doors"></div>
+      <button type="button" id="wallet-forget" class="quiet" hidden>Forget</button>
+    </div>
+  </section>
+
+  <div class="stage">
+    <div class="screen">
+      <canvas id="game" width="480" height="320" tabindex="0" aria-label="The house of the chosen seat. When his whiteboard shows a job, Enter shows it large."></canvas>
+      <div id="letter" class="letter-pop" hidden>
+        <article class="letter" role="dialog" aria-labelledby="letter-head">
+          <h2 id="letter-head">A letter from him</h2>
+          <pre id="letter-text"></pre>
+          <button type="button" id="letter-close">Close</button>
+        </article>
+      </div>
+      <!-- his whiteboard large: the job his seat works on, his steps ringed (main.js, boardSvg) -->
+      <div id="board-pop" class="letter-pop" hidden>
+        <article class="letter board-card" role="dialog" aria-labelledby="board-head">
+          <h2 id="board-head">His whiteboard</h2>
+          <div id="board-svg" class="board-svg"></div>
+          <div id="board-seats" class="board-seats" hidden data-feature="boardSeats"></div>
+          <pre id="board-note"></pre>
+          <button type="button" id="board-close">Close</button>
+        </article>
+      </div>
+    </div>
+  </div>
+
+  <section id="knock" class="knock" hidden role="alert">
+    <h2 id="knock-title">Knock knock</h2>
+    <p id="knock-text"></p>
+    <p>On the machine that runs this seat, run <code>imd update</code> and restart the worker. A worker started with
+      <code>--auto-update</code> updates itself between tasks.</p>
+    <button type="button" id="knock-ok">Got it</button>
+  </section>
+
+  <section class="talk" aria-label="Talk to him">
+    <form id="talk-form" class="talk-line" autocomplete="off">
+      <label for="talk-input" class="talk-prompt">&gt;</label>
+      <input id="talk-input" type="text" maxlength="160" spellcheck="false" enterkeyhint="send"
+        placeholder="talk to him: feed the dog, how long do you live here?, buy imd, help">
+    </form>
+    <p id="talk-reply" class="talk-reply" aria-live="polite"></p>
+  </section>
+
+  <!-- a chart or swap page he opened, when the side-by-side page is not around (a hosted copy, or the house alone);
+       straight from its own site, sandboxed so it cannot move this page. Off in the swarm build (FEATURES.marketPane,
+       2026-10-25): main.js adds the sandboxed frame element only when the pane shows a page, so with it off there is none -->
+  <aside id="pane" class="side-pane" hidden aria-label="A page he opened" data-feature="marketPane">
+    <div class="pane-head"><b id="pane-name"></b><a id="pane-open" target="_blank" rel="noopener noreferrer">open</a>
+      <button type="button" id="pane-close" class="quiet">Close</button></div>
+  </aside>
+
+  <section class="below">
+    <div class="diary-col">
+      <h2>Diary</h2>
+      <div class="diary">
+        <ol id="diary" aria-live="polite"><li class="empty">What he does will show up here.</li></ol>
+      </div>
+    </div>
+    <div class="side">
+      <div class="counters">
+        <h2 id="st-head">The seat</h2>
+        <dl>
+          <div><dt>Tasks</dt><dd id="st-attempts">–</dd></div>
+          <div><dt>Accepted</dt><dd id="st-accepted">–</dd></div>
+          <div><dt>Rejected</dt><dd id="st-rejected">–</dd></div>
+          <div><dt>Failed</dt><dd id="st-failed">–</dd></div>
+        </dl>
+        <p id="st-line" class="small">Waiting for the first reading.</p>
+      </div>
+    </div>
+  </section>
+
+  <dialog id="legend" class="legend" aria-labelledby="legend-title">
+    <form method="dialog" class="legend-head"><h2 id="legend-title">What he does, and why</h2><button type="submit" class="quiet-ink" autofocus>Close</button></form>
+    <p class="small-ink">Everything in the house comes from the seat's public record. While the seat works on a task, the kind of task decides where he goes<span data-feature="lookSwitch"> (the mapping of the <span id="legend-look"></span> look; each look has its own)</span>:</p>
+    <table>
+      <thead><tr><th scope="col">The seat works on</th><th scope="col">He</th></tr></thead>
+      <tbody id="legend-work"></tbody>
+    </table>
+    <p class="small-ink">A task shows up in the record only once it is posted. Until then he picks what the seat usually does ("probably" in the diary) and switches if the posted task says otherwise.</p>
+    <table>
+      <thead><tr><th scope="col">In the house</th><th scope="col">Means</th></tr></thead>
+      <tbody>
+        <tr><td>The phone rings</td><td>work is queued for the seat</td></tr>
+        <tr><td>He posts a letter in the mailbox</td><td>the seat submitted a result</td></tr>
+        <tr><td>The mail carrier brings a letter, he dances and hangs a picture</td><td>a result was accepted; the plaque counts every accepted result</td></tr>
+        <tr><td>He reads a letter and sits on his bed for a while</td><td>a result was rejected</td></tr>
+        <tr><td>The mail carrier comes while he sleeps or is out, and the flag goes up</td><td>a verdict came in; an accepted result counts on the plaque at once, and he reads the letter when he's back</td></tr>
+        <tr><td>His computer smokes and he fans it</td><td>a run failed</td></tr>
+        <tr><td>The TV shows static</td><td>the swarm's checker is down</td></tr>
+        <tr><td>He naps in the armchair, lights on</td><td>no work for more than 12 hours</td></tr>
+        <tr><td>Lights out, he sleeps in bed</td><td>the seat is offline, or had no task for three days</td></tr>
+        <tr><td>A "back soon" sign on the door, nobody home, the dog waiting by the door</td><td>the seat's owner paused it (read from the seat record, so only with the local relay)</td></tr>
+        <tr><td>A parcel at the door, a blinking badge on the computer</td><td>the seat runs an older worker than the newest release</td></tr>
+        <tr><td>He fetches the parcel and installs it</td><td>the seat updated its worker</td></tr>
+        <tr><td>He cheers</td><td>a job he worked on is done</td></tr>
+        <tr><td>He scratches his head</td><td>a job he worked on is blocked</td></tr>
+        <tr><td>Fireworks over the roof</td><td>a launch he worked on went live</td></tr>
+        <tr><td>You type to him on the line under the seat row</td><td>he does it, answers at his machine (an explorer page opens beside him), or, while the seat works, tells you to wait; ask too much and he takes the dog out for a walk. help lists what he understands</td></tr>
+        <tr><td>You ask him about a token: price, chart, buy or sell, with its contract address</td><td>he reads its price on DexScreener; a chart opens on defined.fi and a buy or sell on LlamaSwap, beside him in the split view. Give him a ticker alone and he asks which one you mean. Not financial advice</td></tr>
+        <tr><td>You ask about NFTs, floor prices or alpha</td><td>he tells you about Sworn and to mint a card; Sworn opens beside him</td></tr>
+        <tr><td>You ask about IMD burns</td><td>the burn tracker opens beside him, and he tells you that anyone can update it</td></tr>
+        <tr><td>Big fireworks, and he dances in the kitchen with his dog</td><td>the job the page follows (#/job/…) is done</td></tr>
+        <tr><td>The attic window lit: amber or white-green</td><td>while he works on the seat's premium model; amber for Claude Code, white-green for Codex (read through the local relay)</td></tr>
+        <tr><td>More chimney smoke</td><td>the effort of that premium work: a thin wisp at minimal or low, thick fast billows at max or ultra; other tiers publish no effort and keep the usual puffs</td></tr>
+        <tr><td>A symbol in his bubble while he works</td><td>the model, by its name: a note for Opus, a quill for Sonnet, a leaf for Haiku, a book for Fable, a star for Astra, the sun for Sol, the moon for Luna</td></tr>
+        <tr data-feature="machineTicker"><td>A green ticker on top of the machine wall, and its big dial</td><td>while the seat works: the provider (Claude Code or Codex), the model of the step it runs and its effort on the dial, low to high; "?" when the effort is not published for that model's tier (read through the local relay)</td></tr>
+        <tr><td>The clock on the mantel rings</td><td>a schedule opened the job or question he starts</td></tr>
+        <tr><td>He knocks on the glass</td><td>shown only to the seat's owner: the worker needs an update</td></tr>
+        <tr><td>He types you a letter</td><td>once a day: what the seat did since your last visit; if he's asleep or out, he left it as a note</td></tr>
+      </tbody>
+    </table>
+    <p class="small-ink">Between tasks he follows his own routine (TV, piano, records, cooking, a book, exercise, the dog, the plants). That part is just him.</p>
+    <form method="dialog"><button type="submit" id="legend-close">Close</button></form>
+  </dialog>
+
+</main>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
