@@ -1,7 +1,7 @@
 # Little Computer Pepes
 
-A little pepe lives one IMD swarm seat's working day in a cut-away house: a browser game, hosted by the IMD swarm at
-https://lcp.sites.imd.fun/.
+A little pepe lives one IMD swarm seat's working day in a cut-away house: a browser game, hosted by the IMD swarm under
+the site name swarmstreet (https://swarmstreet.identitymd.eth.limo/).
 
 This branch is generated. It holds only the hosted site (`dist/`) and `build.json`, which names the commit of the
 main development repository it was built from. Changes made here are overwritten by the next publish.

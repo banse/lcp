@@ -756,7 +756,8 @@ canvas.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === 
 // Questions he looks up at the machine; a page the explorer shows opens beside him (or the side-by-side page opens).
 const talkState = { stress: 0, at: 0, history: [], back: 0, market: null, asked: null };
 // the house's own sites; the burn tracker's contract (anyone can send its update) is not deployed yet: null until then
-const SITE = { sworn: 'https://swornbyswarm.sites.imd.fun/', burned: 'https://burned.sites.imd.fun/' };
+// the burn tracker's site is a newer one (2026-10-24): named burned-6427.identitymd.eth, on eth.limo, not on sites.imd.fun
+const SITE = { sworn: 'https://swornbyswarm.sites.imd.fun/', burned: 'https://burned-6427.identitymd.eth.limo/' };
 const BURN_TRACKER_CA = null;
 
 // link: {href, label}, a page he found, opened in a new tab (beside him too, in the split view)
@@ -1048,7 +1049,7 @@ async function talk(raw) {
     house.event(s.working ? { type: 'flash', icon: 'dots' } : { type: 'command', act: 'fire' });   // he lights the fire
     const beside = openSite('burned');
     talkState.asked = { what: 'burnUpdate', at: Date.now() };
-    return talkSay(cmd, `${pick(BURN.lead)} ${BURN.note(beside)}`, { href: SITE.burned, label: 'burned.sites.imd.fun' });
+    return talkSay(cmd, `${pick(BURN.lead)} ${BURN.note(beside)}`, { href: SITE.burned, label: 'burned-6427.identitymd.eth.limo' });
   }
   if (busy) {
     const tier = lvl >= STRESS.warn ? 2 : lvl >= STRESS.grumpy ? 1 : 0;
