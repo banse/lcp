@@ -20,4 +20,36 @@ export class Sound {
   knock() { this.beep(95, 0.07, 0, 'triangle', 0.18); this.beep(80, 0.07, 0.11, 'triangle', 0.18); }
   jingle() { [523, 659, 784, 1047].forEach((f, i) => this.beep(f, 0.14, i * 0.12, 'square', 0.04)); }
   sad() { [392, 349, 311].forEach((f, i) => this.beep(f, 0.3, i * 0.25, 'triangle', 0.05)); }
+
+  // the needle drops (2026-10-26, the owner: a short party riff every time he puts a record on): a chip riff of our own,
+  // lead over a bass line, 2.6 s; `wanted` = the radio is on, so a context may be made (the page already had its click)
+  riff(wanted = false) {
+    if (wanted && !this.ctx) { const A = window.AudioContext || window.webkitAudioContext; if (A) this.ctx = new A(); }
+    if (!this.ctx || !(this.on || wanted)) return 0;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    const on = this.on; this.on = true;
+    for (const [f, at, d] of RIFF.lead) this.beep(f, d, at, 'square', 0.045);
+    for (const [f, at, d] of RIFF.bass) this.beep(f, d, at, 'triangle', 0.07);
+    this.on = on;
+    return RIFF.length;
+  }
+
+  // a clip of the owner's choosing instead of the riff (assets/celebrate.mp3 when the site has it): their licence, their file
+  clip(url, seconds = 4) {
+    try {
+      const a = new Audio(url); a.volume = 0.6; this.clipEl = a;
+      a.play().catch(() => {});
+      setTimeout(() => { if (this.clipEl === a) { a.pause(); this.clipEl = null; } }, seconds * 1000);
+      return seconds;
+    } catch (e) { return 0; }
+  }
 }
+
+// the riff: [frequency, start s, length s]; E E G A, C A G E over C G A F bass, a pickup and a cheer at the end
+const q = 0.16;
+export const RIFF = {
+  length: 2.6,
+  lead: [[659, 0, q], [659, q, q], [784, 2 * q, q], [880, 3 * q, 1.5 * q], [1047, 5 * q, q], [880, 6 * q, q], [784, 7 * q, q], [659, 8 * q, 1.5 * q],
+    [784, 10 * q, q], [880, 11 * q, q], [1047, 12 * q, 2.2 * q], [1319, 14 * q, 2 * q]],
+  bass: [[131, 0, 2 * q], [131, 2 * q, 2 * q], [98, 4 * q, 2 * q], [98, 6 * q, 2 * q], [110, 8 * q, 2 * q], [110, 10 * q, 2 * q], [87, 12 * q, 2 * q], [98, 14 * q, 2 * q]],
+};

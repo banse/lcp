@@ -34,6 +34,7 @@ export class House {
     this.onLetterDone = null;     // (why, late): why = 'bed' or 'away' when he left it as a note
     this.onKnock = null;          // (info) => the page shows its message to the owner
     this.onRecords = null;        // (on) => he put a record on / left the player (main.js: the radio, when the visitor's is off)
+    this.onNeedle = null;         // () => the needle drops: a short riff before the music (main.js); returns its seconds
     this.onPaper = null;          // () => the mail carrier dropped the day's IMD Daily into the mailbox (main.js: he reads it)
     this.knockAck = false;
   }
@@ -396,7 +397,9 @@ export class House {
       default: break;
     }
   }
-  *putOn(done) { yield* this.goTo('records'); yield* this.act('records', 'stand', 1.2); if (done) done(); yield* this.act('records', 'dance', 2.6, 'note'); }
+  *putOn(done) { yield* this.goTo('records'); yield* this.act('records', 'stand', 1.2); yield* this.needle(); if (done) done(); yield* this.act('records', 'dance', 2.6, 'note'); }
+  // the needle drops: the riff plays while he stands at the player, the station follows (owner 2026-10-26)
+  *needle() { const s = this.onNeedle ? this.onNeedle() : 0; if (s > 0) yield* this.act('records', 'stand', s); }
   *needleUp(done) { yield* this.goTo('records'); yield* this.act('needle', 'reach', 0.7); if (done) done(); yield* this.act('needle', 'stand', 0.6); }
   *whaleDance() {
     if (this.man.floor === 0) this.dogTo(this.man.x + 16, 'party', 7);
@@ -650,7 +653,7 @@ export class House {
         yield* this.act('piano', 'piano', 14 + Math.random() * 10, 'note', (i) => { if (i % 9 === 0) this.sound.note(); });
       },
       *records() {                                                  // his own record: the radio plays while he is there (main.js onRecords)
-        yield* this.goTo('records'); yield* this.act('records', 'stand', 1.5);
+        yield* this.goTo('records'); yield* this.act('records', 'stand', 1.5); yield* this.needle();
         if (this.onRecords) this.onRecords(true);
         yield* this.act('records', 'dance', 8, 'note');
         if (this.onRecords) this.onRecords(false);

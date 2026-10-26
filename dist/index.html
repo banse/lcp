@@ -90,6 +90,19 @@
           <button type="button" id="news-close">Close</button>
         </article>
       </div>
+      <!-- the station behind the panel over the piano (2026-10-26): a click on the panel while music plays (src/station.js) -->
+      <div id="station-pop" class="letter-pop" hidden>
+        <article class="letter station-card" role="dialog" aria-labelledby="station-head">
+          <h2 id="station-head">Station</h2>
+          <p id="station-meta" class="small-ink"></p>
+          <canvas id="station-grid" class="station-grid" width="2" height="2" aria-label="The station's 16-step pattern as its hook holds it"></canvas>
+          <dl id="station-numbers" class="station-numbers"></dl>
+          <p id="station-pool" class="small-ink"></p>
+          <p id="station-reading" class="small-ink"></p>
+          <p class="small-ink">Listen on <a id="station-listen" href="https://theidm.fun/" target="_blank" rel="noopener noreferrer">theidm.fun</a>, where every trade is a note; the token on <a id="station-explorer" href="#" target="_blank" rel="noopener noreferrer">the explorer</a>. The genre is theidm's pick for the epoch, and the key and mode on their console are their synth's reading of this state.</p>
+          <button type="button" id="station-close">Close</button>
+        </article>
+      </div>
       <!-- his whiteboard large: the job his seat works on, his steps ringed (main.js, boardSvg) -->
       <div id="board-pop" class="letter-pop" hidden>
         <article class="letter board-card" role="dialog" aria-labelledby="board-head">

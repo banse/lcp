@@ -196,6 +196,7 @@ function furniture(g) {
   ln(g, 130, 112, 130, 106, 0.6); g.beginPath(); g.moveTo(125.5, 106); g.lineTo(134.5, 106); g.lineTo(133, 100); g.lineTo(127, 100); g.closePath(); g.fillStyle = C.paper; g.fill(); g.lineWidth = 0.6; g.strokeStyle = C.ink; g.stroke();
   box(g, 162, 66, 32, 60, C.paper, 0.8); ln(g, 178, 66, 178, 126, 0.6); disc(g, 175.5, 96, 0.8, C.ink, 0); disc(g, 180.5, 96, 0.8, C.ink, 0);
   hatch(g, 162, 66, 32, 4, 0.9, 0.5); box(g, 136, 124, 24, 2, C.greyD, 0);
+  surfboard(g, 92, 80, 50, 9, -0.1);                                          // over the bed (owner 2026-10-26)
   // ---- bathroom: tub, curtain rod, mirror, sink, towel, cabinet
   ln(g, 204, 58, 264, 58, 0.8);
   rbox(g, 204, 105, 60, 17, [1, 1, 6, 6], C.paper, 0.8); ln(g, 204, 108, 264, 108, 0.4);
@@ -539,6 +540,42 @@ function treePlaque(g, p) {
 }
 
 export const SWORN_FRAME = { x: 314, y: 219, w: 16, h: 16 };            // the hive's box on the wall (no frame, owner 2026-10-26)
+// the small sequencer panel over the piano (owner 2026-10-26: "die kleine tafel übers klavier, aber nur wenn musik
+// gespielt wird"): the playing station's 4 x 16 pattern and bass line as its hook holds them (stationfeed.js grid
+// events; $IDM only, the other stations have no hook), lit in the station's colour, the oscilloscope's width. The
+// running step is the house's own clock from the bpm, not the site's; it stays dark when the music is off.
+export const GRID_PANEL = { x: 212, y: 141, pitch: 1.5 };
+function gridPanel(g, grid, color, now) {
+  const { x, y, pitch } = GRID_PANEL, cell = pitch * 0.75, pad = 1.2, w = 16 * pitch + pad * 2 - pitch / 4, h = 5.25 * pitch + pad * 2;
+  box(g, x - 0.8, y - 0.8, w + 1.6, h + 1.6, C.paper2, 0.5); box(g, x, y, w, h, C.glass, 0);
+  g.fillStyle = color || C.green;
+  for (let t = 0; t < 4; t++) for (let i = 0; i < 16; i++) { g.globalAlpha = grid.rows[t][i] ? 1 : 0.25; g.fillRect(x + pad + i * pitch, y + pad + t * pitch, cell, cell); }
+  g.globalAlpha = 0.8;
+  for (let i = 0; i < 16; i++) if (grid.bass[i]) { const bh = 0.3 + (grid.bass[i] / 15) * (pitch - 0.3); g.fillRect(x + pad + i * pitch, y + pad + 5.1 * pitch - bh, cell, bh); }
+  const step = Math.floor(now / (60000 / (grid.bpm || 96) / 4)) % 16;
+  g.globalAlpha = 0.5; g.fillRect(x + pad + step * pitch, y + pad - 0.55, cell, 0.3);
+  g.globalAlpha = 1;
+}
+
+// a surfboard on the wall over the bed (the owner, 2026-10-26: "hänge ein surfbrett übers bett an die wand"): nose to the
+// right and a little up, a stringer down the middle, an amber band at the tail, the fin below, two brackets holding it
+function surfboard(g, cx, cy, w, h, tilt) {
+  g.save(); g.translate(cx, cy); g.rotate(tilt);
+  const nose = w / 2, tail = -w / 2;
+  g.beginPath(); g.moveTo(tail, 0);
+  g.bezierCurveTo(tail + w * 0.12, -h * 0.62, nose - w * 0.3, -h * 0.62, nose, 0);
+  g.bezierCurveTo(nose - w * 0.3, h * 0.62, tail + w * 0.12, h * 0.62, tail, 0);
+  g.closePath(); g.fillStyle = C.paper; g.fill(); g.lineWidth = 0.55; g.strokeStyle = C.ink; g.stroke();
+  g.save(); g.clip();
+  ln(g, tail + 2, 0, nose - 2, 0, 0.35, C.greyM);                                    // the stringer
+  g.fillStyle = C.amber; g.fillRect(tail + w * 0.16, -h, 2.2, h * 2);                  // the band
+  g.fillStyle = C.ink; g.fillRect(tail + w * 0.16 + 3, -h, 0.8, h * 2);
+  g.restore();
+  g.beginPath(); g.moveTo(tail + w * 0.24, h * 0.42); g.lineTo(tail + w * 0.24 + 1.2, h * 0.42 + 2.6); g.lineTo(tail + w * 0.24 + 2.8, h * 0.42); g.closePath(); g.fillStyle = C.ink; g.fill();   // the fin
+  box(g, -w * 0.08 - 0.8, h * 0.46, 1.6, 1.3, C.greyD, 0); box(g, w * 0.3 - 0.8, h * 0.4, 1.6, 1.3, C.greyD, 0);   // the brackets, under the board
+  g.restore();
+}
+
 function hexPath(g, cx, cy, r) {
   g.beginPath();
   for (let i = 0; i < 6; i++) { const t = i * Math.PI / 3; g.lineTo(cx + Math.cos(t) * r, cy + Math.sin(t) * r); }
@@ -800,6 +837,7 @@ function props(g, s, now, tick) {
   // the radio (radio.js): the stations as record sleeves in the cabinet's right half, the one playing pulled up; a note
   // rises over the player at a trade in its pool; finished $IDM tracks hang as records beside the pictures
   if (s.radio) {
+    if (onAir && s.radio.grid) gridPanel(g, s.radio.grid, s.radio.color, now);   // the station's grid over the piano, only while music plays
     (s.radio.sleeves || []).forEach((r, i) => {
       const up = r.current && onAir ? 2 : 0, x = 280.4 + i * 2.6;
       box(g, x, 194.5 - up, 2, 10.5 + up, r.color, 0.3);

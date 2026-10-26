@@ -4,7 +4,7 @@ import { House } from './brain.js';
 import { LiveFeed, DemoFeed, JobFollower, SwarmJobs, isAsleep } from './feed.js';
 import { wallets, connect, seatsOf } from './wallet.js';
 import { Sound } from './sound.js';
-import { CATEGORIES, expertise } from './mapping.js';
+import { CATEGORIES, expertise, firstSentence } from './mapping.js';
 import { taskCategory } from './feed.js';
 import { THEMES, DEFAULT_THEME } from './themes/index.js';
 import { THINGS } from './themes/imd-layout.js';
@@ -14,7 +14,8 @@ import { parse, answer, pick, stressCost, HELP, BUSY, DO, EGG, UNKNOWN, ASLEEP, 
 import { DAILY, latestIssue, issueLine, paperLines } from './daily.js';
 import { NewsReader } from './news.js';
 import { cardOf } from './sworn.js';
-import { SWORN_FRAME } from './themes/imd.js';
+import { SWORN_FRAME, GRID_PANEL } from './themes/imd.js';
+import { StationPop } from './station.js';
 import { Radio, STATIONS, PENDING, GAIN, stationByName, stationFor, sadStation, SITE as THEIDM } from './radio.js';
 import { StationFeed, SILENCE, amount } from './stationfeed.js';
 import { IMD_CA, WETH, CHAINS, launchOf, quote, chartUrl, swapUrl, usd, DEFINED_URL, LLAMA_URL } from './market.js';
@@ -72,20 +73,35 @@ const sound = new Sound();
 // reacts to what the visitor hears; when it is off, nothing is read.
 const radio = new Radio({ store: { get: (k) => store(k), set: (k, v) => store(k, v) }, onChange: radioChanged });
 const stationFeed = new StationFeed(onStationEvent);
+const stationPop = FEATURES.radio ? new StationPop() : null;   // the station's details, a click on the panel over the piano
 // The IMD Daily: the popup reader, and the issue he read last (a click on him while he reads opens it)
 const news = FEATURES.news ? new NewsReader() : null;
 let newsIssue = null;
 let radioStage = 0, radioBpm = 100, radioRate = null, radioFeedKey = null, sadTimer = null;
+let radioGrid = null;   // the playing station's sequencer state from its hook ($IDM), drawn over the piano while music plays
 function radioSync() {
   if (!house) return;
-  house.state.radio = FEATURES.radio ? radio.houseState({ bpm: radioBpm, stage: radioStage }) : null;
+  house.state.radio = FEATURES.radio ? radio.houseState({ bpm: radioBpm, stage: radioStage, grid: radioGrid }) : null;
   house.onPaper = onPaper;
+  house.onNeedle = onNeedle;
   // his own record (the routine, or "spin a record"): music while he is at the player, even with the visitor's radio off
   house.onRecords = (on) => {
     if (!FEATURES.radio || radio.on) return;
     if (on) { radio.playFor('records'); if (radio.live) addDiary(`He puts a record on: ${radio.label()}.`); }
     else { if (radio.live) addDiary('He lifts the needle.'); radio.stopFor('records'); }
   };
+}
+// the needle drops (the owner, 2026-10-26: a short party riff every time he puts a record on): assets/celebrate.mp3 when
+// the site has one (the owner's clip and licence; looked for once), else the house's own chip riff (sound.js RIFF); heard
+// with the visitor's sound on or the radio playing. Returns the seconds he stands at the player before the music.
+let celebrateClip = null;
+if (FEATURES.radio) fetch('assets/celebrate.mp3', { method: 'HEAD', cache: 'no-store' }).then((r) => { if (r.ok && /audio/.test(r.headers.get('content-type') || '')) celebrateClip = 'assets/celebrate.mp3'; }).catch(() => {});
+function onNeedle() {
+  if (!FEATURES.radio) return 0;
+  const wanted = sound.on || radio.live || radio.on;
+  if (!wanted) return 0;
+  house.lastNeedle = { kind: celebrateClip ? 'clip' : 'riff', at: Date.now() };
+  return celebrateClip ? sound.clip(celebrateClip, 4) : sound.riff(true);
 }
 function radioChanged(r) {
   if (!FEATURES.radio) return;
@@ -97,7 +113,7 @@ function radioChanged(r) {
   $('radio-btn').title = `${st.label} on theidm.fun, ${note}: background music, the live sound of a token's pool`;
   radioSync();
   const key = r.live ? st.key : null;
-  if (key !== radioFeedKey) { radioFeedKey = key; radioStage = 0; radioRate = null; if (key) stationFeed.start(st); else stationFeed.stop(); radioSync(); }
+  if (key !== radioFeedKey) { radioFeedKey = key; radioStage = 0; radioRate = null; radioGrid = null; if (stationPop) stationPop.close(); if (key) stationFeed.start(st); else stationFeed.stop(); radioSync(); }
 }
 // the station's pool, as the stream page reads it: a note per trade, whales, pulses, the silence stages, a finished track
 function onStationEvent(e) {
@@ -111,6 +127,7 @@ function onStationEvent(e) {
     }
     radioSync(); return;
   }
+  if (e.type === 'grid') { radioGrid = e.grid; radioSync(); if (stationPop && stationPop.open_) stationPop.update(radioGrid, feedReading()); return; }
   if (!house || !radio.live) return;
   if (e.type === 'swap') {
     house.event({ type: 'radio', act: 'note' });
@@ -218,7 +235,7 @@ function visit(id, job = false, hint = null) {
   if (!job) clearDiary();
   hideLetter(); machineSaid = ''; talkState.stress = 0; talkReply(null);   // his last answer was the other seat's
   setTitle('Who lives in Swarmstreet ', id);
-  $('lede').textContent = job && followed ? followLede() : 'A little pepe lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.';
+  if (job && followed) setLede(followLede(), true); else setLede(DEFAULT_LEDE);
   $('seat-input').value = id;
   $('demo-btn').setAttribute('aria-pressed', 'false');
   if (!job && location.hash !== '#/seat/' + id) history.replaceState(null, '', '#/seat/' + id);
@@ -240,7 +257,7 @@ function followJob(id, step = null) {
   followed = { id, job: null };
   clearDiary();
   addDiary(`Looking up job ${id.slice(0, 8)}…`);
-  $('lede').textContent = followLede();
+  setLede(followLede(), true);
   follower.start(id, step);
   renderJobs(jobList);
 }
@@ -253,15 +270,19 @@ function followRadio(job) {
   if (st && st.key !== radio.key && radio.tune(st.key, 'follow', true)) { addDiary(`The job is about ${st.ticker}: he puts on ${st.label}.`); if (house) house.event({ type: 'radio', act: 'tune', done: () => radio.sync() }); else radio.sync(); }
 }
 
+// the job's name in the lede: the objective's first sentence, whole (mapping.js firstSentence)
 function jobName(job) {
-  const o = (job && job.objective || '').replace(/\s+/g, ' ').trim();
-  return o ? `"${o.length > 70 ? o.slice(0, 69) + '…' : o}"` : 'job ' + followed.id.slice(0, 8);
+  const o = firstSentence(job && job.objective);
+  return o ? `"${o}"` : 'job ' + followed.id.slice(0, 8);
 }
 
+// two lines over the whole width (the owner, 2026-10-26): the job and its first sentence, then what the house does
 function followLede() {
   const j = followed && followed.job;
-  return `Following job ${followed.id.slice(0, 8)}${j && j.objective ? ': ' + jobName(j) : ''}. The house is the seat working on it now, and moves to the seat on its next step.`;
+  return `Following job ${followed.id.slice(0, 8)}${j && j.objective ? ': ' + jobName(j) : '.'}\nThe house is the seat working on it now, and moves to the seat on its next step.`;
 }
+const DEFAULT_LEDE = 'A little pepe lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.';
+function setLede(text, wide = false) { const el = $('lede'); el.textContent = text; el.classList.toggle('wide', !!wide); }
 
 // the step a seat runs for the followed job: the house shows that work, not a guess from the seat's recent tasks
 function stepHint(e, st) {
@@ -277,7 +298,7 @@ function onFollow(e) {
       stopFollowing();
       history.replaceState(null, '', seatId != null && mode === 'live' ? '#/seat/' + seatId : location.pathname);
       const note = () => addDiary('Following a job works in the local version only: a hosted page can\'t read the job records.');
-      if (house && mode === 'live') { $('lede').textContent = 'A little pepe lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.'; note(); }
+      if (house && mode === 'live') { setLede(DEFAULT_LEDE); note(); }
       else Promise.resolve(randomBusySeat()).then(note);
       return;
     }
@@ -290,7 +311,7 @@ function onFollow(e) {
     followRadio(e.job);
     if (st && st.seat !== seatId) visit(st.seat, true, e.running ? stepHint(e, st) : null);
     else if (st && e.running) live.setHint(stepHint(e, st));
-    $('lede').textContent = followLede();
+    setLede(followLede(), true);
     const o = e.job && e.job.oracle;
     if (e.unseen) addDiary(`Following job ${followed.id.slice(0, 8)}. The swarm's live feed doesn't show it right now; the house moves when one of its steps changes.`);
     else if (o && !e.running) addDiary(`Following ${name}, an oracle question: ${o.members.length} of ${o.panelSize} seats have answered (quorum ${o.quorum}).`);
@@ -326,7 +347,7 @@ function startDemo() {
   house.onKnock = showKnock; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
   setTitle('Demo: a made-up seat, one fast day', null);
-  $('lede').textContent = 'Every event the house knows, one after another, each when he is done with the last: the phone, each kind of work (token launch, websites, research, video, audio, images, oracles), mail, a failed run, a worker update, the checker going down, sleep with mail at night, and the owner pausing the seat.';
+  setLede('Every event the house knows, one after another, each when he is done with the last: the phone, each kind of work (token launch, websites, research, video, audio, images, oracles), mail, a failed run, a worker update, the checker going down, sleep with mail at night, and the owner pausing the seat.');
   $('demo-btn').setAttribute('aria-pressed', 'true');
   if (location.hash !== '#demo') history.replaceState(null, '', '#demo');
   demo.start();
@@ -1277,7 +1298,7 @@ function plaqueFor(s) {
   const key = `${seatId}|${rate}|${ex ? ex.category : ''}`;
   if (mode === 'live' && key !== plaqueSaid) {
     plaqueSaid = key;
-    addDiary(`The plaque on the tree: ${rate == null ? 'no tasks yet' : rate + ' % accepted'}${ex ? `, by trade a ${ex.job.toLowerCase()}: ${ex.word} are ${Math.round(ex.share * 100)} % of his newest tasks, ${ex.ratio >= 2 ? Math.round(ex.ratio) + ' x' : Math.round(ex.ratio * 10) / 10 + ' x'} the swarm's share` : ''}.`);
+    addDiary(`The plaque on the tree: ${rate == null ? 'no tasks yet' : rate + ' % accepted'}${ex ? `, by trade ${/^[aeiou]/i.test(ex.job) ? 'an' : 'a'} ${ex.job.toLowerCase()}: ${ex.word} are ${Math.round(ex.share * 100)} % of his newest tasks, ${ex.ratio >= 2 ? Math.round(ex.ratio) + ' x' : Math.round(ex.ratio * 10) / 10 + ' x'} the swarm's share` : ''}.`);
   }
 }
 
@@ -1294,6 +1315,23 @@ async function swornFor(id, asked) {
   if (house !== asked) return;
   house.state.sworn = card;
   if (card) addDiary(`A Sworn card hangs over the fireplace: his owner's, No. ${card.tokenId}, ${card.lit === 0 ? 'no fact lit yet' : card.lit === 1 ? 'one fact lit' : card.lit + ' facts lit'}.`);
+}
+// the panel over the piano (themes/imd.js GRID_PANEL), there only while music plays and the station has a grid
+function onPanel(e) {
+  const s = house && house.state.radio;
+  if (!s || !s.on || !s.grid) return false;
+  const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) * 480 / r.width, y = (e.clientY - r.top) * 320 / r.height, p = GRID_PANEL;
+  const w = 16 * p.pitch + 2.4 - p.pitch / 4, h = 5.25 * p.pitch + 2.4;
+  return x >= p.x - 1.5 && x <= p.x + w + 1.5 && y >= p.y - 1.5 && y <= p.y + h + 1.5;
+}
+const feedReading = () => ({ rate: radioRate, stage: radioStage, lastAt: stationFeed.lastAt });
+if (FEATURES.radio) {
+  canvas.addEventListener('click', (e) => {
+    if (!onPanel(e)) return;
+    stationPop.open(radio.station, radioGrid, feedReading());
+    addDiary(`You tapped the panel over the piano: ${radio.station.label}, as its hook holds it.`);
+  });
+  canvas.addEventListener('mousemove', (e) => { if (onPanel(e)) canvas.style.cursor = 'pointer'; });
 }
 function onSworn(e) {
   if (!house || !house.state.sworn) return false;
@@ -1352,9 +1390,25 @@ function onPaper() {
   store('lcp:daily:seen', issue.id);
   newsIssue = issue; house.state.news = paperLines(issue);
   addDiary(`The mail carrier brings ${issue.isToday ? 'today\'s' : 'the new'} IMD Daily, No. ${issue.id}: "${issue.title}".`);
+  if (hasNoMinute()) { addDiary('The paper waits in the mailbox until he has a minute.'); paperLater(issue); return; }
+  readPaper(issue);
+}
+// busy for the paper: working, asleep, out, walked out, or in the middle of something the visitor asked for (a scene the
+// news would cut short: 2026-10-26, "spin a record" lost to the paper that came 4 s later)
+function hasNoMinute() {
   const s = house.state;
-  if (s.working || s.asleep || s.away || house.walkout) { addDiary('The paper waits in the mailbox until he has a minute.'); return; }
-  house.event({ type: 'command', act: 'news', done: () => { talkReply(issueLine(issue)); addDiary(`He reads it. ${issueLine(issue)}`); } });
+  return !!(s.working || s.asleep || s.away || house.walkout || (house.current && house.current.name === 'command') || (house.queue || []).some((q) => q.name === 'command'));
+}
+function readPaper(issue) { house.event({ type: 'command', act: 'news', done: () => { talkReply(issueLine(issue)); addDiary(`He reads it. ${issueLine(issue)}`); } }); }
+// the paper lies in the mailbox: every 3 s a look whether he has a minute now; a request or a click may have taken it already
+let paperTimer = null;
+function paperLater(issue) {
+  clearInterval(paperTimer);
+  paperTimer = setInterval(() => {
+    if (!house || !house.state.paper) { clearInterval(paperTimer); return; }
+    if (hasNoMinute()) return;
+    clearInterval(paperTimer); readPaper(issue);
+  }, 3000);
 }
 if (FEATURES.news) { setTimeout(dailyWatch, 8000); dailyTimer = setInterval(dailyWatch, DAILY_POLL_MS); }
 

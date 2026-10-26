@@ -70,3 +70,11 @@ export function expertise(counts) {
   }
   return best;
 }
+
+// the first sentence of a text, whole (the lede while following a job, the owner 2026-10-26: "der erste satz der
+// jobbeschreibung soll ganz ausgegeben werden"); a period counts only before a space or the end, so "0.5 IMD" stays whole
+export function firstSentence(text) {
+  const o = String(text || '').replace(/\s+/g, ' ').trim();
+  const m = o.match(/^[\s\S]*?[.!?](?=\s|$)/);
+  return m ? m[0] : o;
+}

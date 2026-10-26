@@ -31,6 +31,7 @@ body {
 h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.6rem); font-weight: 600; line-height: 1.1; text-wrap: balance; }
 h1 .num { color: var(--lamp); }
 #lede { margin: 0; color: var(--muted); max-width: 62ch; }
+#lede.wide { max-width: none; white-space: pre-line; }   /* following a job (2026-10-26): two lines over the whole width */
 h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; }
 
 .page > * { min-width: 0; }
@@ -41,6 +42,13 @@ h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; }
 .letter-pop .letter { width: min(460px, 100%); max-height: 100%; overflow: auto; display: grid; gap: 12px; }
 .letter-pop .letter h2 { margin: 0; }
 .letter-pop .letter button { justify-self: end; }
+/* the station behind the panel over the piano (2026-10-26): the pattern large, the console's numbers in three columns */
+.letter-pop .station-card { width: min(560px, 100%); }
+.station-grid { display: block; width: 100%; height: auto; border: 1.5px solid var(--paper-ink); background: #040804; }
+.station-numbers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 14px; margin: 0; font-size: 0.85rem; }
+.station-numbers div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--wood-l); padding-bottom: 2px; }
+.station-numbers dt { opacity: 0.75; }
+.station-numbers dd { margin: 0; font-weight: 600; }
 /* his whiteboard large (2026-10-25): wider than a letter; the diagram scrolls sideways inside it on a phone */
 .letter-pop .board-card { width: min(760px, 100%); }
 .board-svg { overflow-x: auto; }

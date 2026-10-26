@@ -63,6 +63,25 @@ export const amount = (sw, st) => `${fmt(sw.quote)} ${st.pool.quoteSymbol || 'ET
 // the poller: start(station) reads the last `lookback` blocks once (the last trade's time, the rate), then every
 // POLL_MS the new blocks. Events: {type: 'swap', ...decoded, at}, {type: 'track', trackNo, at}, {type: 'tick', rate,
 // bpm, stage, lastAt, sinceMs}, {type: 'error', message} (once per station). fetchFn: for tests.
+// the hook's state (theidm SPEC.md §3.2, v2 packing): raw() -> slot0 (pattern uint64 bit track*16+step, bass 16 nibbles,
+// swapCount, lastTs, bpm, root, mode) and slot1 (patternId, lastTick, pressure, intervalEma, sizeLogEma, heat, trackNo).
+// Only a station with a hook ($IDM) has it; the others keep their state in theidm's browser. Event {type: 'grid', grid, at}:
+// rows[4][16] of 0/1 (kick, snare, hat, glitch), bass[16] 0..15, swaps, bpm, root, mode, page, heat, track (shown number).
+export const RAW_SELECTOR = '0xc096a632';   // raw()
+export function decodeGrid(result) {
+  const h = String(result || '').replace(/^0x/, '');
+  if (h.length < 128) return null;
+  const s0 = BigInt('0x' + h.slice(0, 64)), s1 = BigInt('0x' + h.slice(64, 128));
+  const part = (v, shift, bits) => Number((v >> BigInt(shift)) & ((1n << BigInt(bits)) - 1n));
+  const pattern = s0 & ((1n << 64n) - 1n), bass = (s0 >> 64n) & ((1n << 64n) - 1n);
+  return {
+    rows: [0, 1, 2, 3].map((t) => Array.from({ length: 16 }, (_, i) => Number((pattern >> BigInt(t * 16 + i)) & 1n))),
+    bass: Array.from({ length: 16 }, (_, i) => Number((bass >> BigInt(4 * i)) & 15n)),
+    swaps: part(s0, 128, 32), bpm: part(s0, 200, 16), root: part(s0, 216, 8), mode: part(s0, 224, 8),
+    page: part(s1, 0, 32), heat: part(s1, 168, 8), track: part(s1, 176, 16) + 1,
+  };
+}
+
 export class StationFeed {
   constructor(onEvent, fetchFn = (...a) => fetch(...a)) { this.onEvent = onEvent; this.fetch = fetchFn; this.st = null; this.timer = null; this.gen = 0; }
 
@@ -86,7 +105,7 @@ export class StationFeed {
   async start(st) {
     this.stop();
     const gen = ++this.gen;
-    this.st = st; this.swaps = []; this.lastAt = null; this.lastBlock = null; this.failed = false;
+    this.st = st; this.swaps = []; this.lastAt = null; this.lastBlock = null; this.failed = false; this.gridSwaps = null;
     try {
       const latest = parseInt(await this.rpc('eth_blockNumber', []), 16);
       const from = Math.max(0, latest - st.lookback);
@@ -103,6 +122,8 @@ export class StationFeed {
         this.swaps = found.map((s) => lastAt - (last.block - s.block) * st.blockSeconds * 1000);
       }
       this.lastBlock = latest;
+      if (st.pool.hook) await this.grid(gen);
+      if (gen !== this.gen) return;
       this.tick();
       this.timer = setInterval(() => this.poll(gen), POLL_MS);
     } catch (e) {
@@ -113,6 +134,14 @@ export class StationFeed {
   stop() { if (this.timer) clearInterval(this.timer); this.timer = null; this.gen++; }
 
   fail(e) { if (this.failed) return; this.failed = true; this.onEvent({ type: 'error', message: (e && e.message) || String(e) }); }
+
+  // the hook's two state slots (one eth_call); an event only when the swap count moved
+  async grid(gen) {
+    const grid = decodeGrid(await this.rpc('eth_call', [{ to: this.st.pool.hook, data: RAW_SELECTOR }, 'latest']));
+    if (gen !== this.gen || !grid || grid.swaps === this.gridSwaps) return;
+    this.gridSwaps = grid.swaps;
+    this.onEvent({ type: 'grid', grid, at: Date.now() });
+  }
 
   async poll(gen) {
     if (gen !== this.gen) return;
@@ -132,6 +161,8 @@ export class StationFeed {
         const tc = await this.logs(from, latest, p.hook, [TOPIC.trackComplete]);
         if (gen !== this.gen) return;
         for (const l of tc) this.onEvent({ type: 'track', trackNo: parseInt(l.topics[1], 16), at: now });
+        await this.grid(gen);
+        if (gen !== this.gen) return;
       }
       this.lastBlock = latest; this.failed = false;
       this.tick();
