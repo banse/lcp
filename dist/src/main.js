@@ -91,11 +91,11 @@ function radioSync() {
     else { if (radio.live) addDiary('He lifts the needle.'); radio.stopFor('records'); }
   };
 }
-// the needle drops (the owner, 2026-10-26: a short party riff every time he puts a record on): assets/celebrate.mp3 when
-// the site has one (the owner's clip and licence; looked for once), else the house's own chip riff (sound.js RIFF); heard
-// with the visitor's sound on or the radio playing. Returns the seconds he stands at the player before the music.
-let celebrateClip = null;
-if (FEATURES.radio) fetch('assets/celebrate.mp3', { method: 'HEAD', cache: 'no-store' }).then((r) => { if (r.ok && /audio/.test(r.headers.get('content-type') || '')) celebrateClip = 'assets/celebrate.mp3'; }).catch(() => {});
+// the needle drops (the owner, 2026-10-26: a short party riff every time he puts a record on): the house's own chip riff
+// (sound.js RIFF), or a clip of the owner's (their file and licence) named here, e.g. 'assets/celebrate.mp3'; a probe for
+// the file was a 404 in the console on every hosted load (v2 live check), so the name is set by hand. Heard with the
+// visitor's sound on or the radio playing. Returns the seconds he stands at the player before the music.
+const celebrateClip = null;
 function onNeedle() {
   if (!FEATURES.radio) return 0;
   const wanted = sound.on || radio.live || radio.on;
@@ -655,14 +655,16 @@ $('wallet-forget').addEventListener('click', () => {
 // the seat's agent page on the right (following the same job, if one is followed). Inside it, the page says so
 // ({type: 'lcp:split', on: true, activeJobs}) and the button hides the explorer again: the page goes back to this
 // house alone; "Random job" asks the page to follow one (its job page left, this house following it).
-// A hosted copy, or a page framed by anything else, shows neither.
+// A hosted copy, or a page framed by anything else, shows neither (the hosted copy did until 2026-10-26: `!LOCAL` let the
+// button through as a link to explorer.imd.fun; the owner: "in der deployten version ist plötzlich der IMD EXPLORER BUTTON
+// wieder drin").
 const SPLIT = 'http://127.0.0.1:8798/side-by-side';
 const EXPLORER = 'https://explorer.imd.fun';                  // a hosted page opens it in a new tab (it refuses frames)
 let inSplit = false, splitUp = false, activeJobs = 0;
 
 function explorerButton() {
   const b = $('explorer-btn'), r = $('random-job-btn');
-  b.hidden = !inSplit && (mode !== 'live' || seatId == null || !((splitUp || !LOCAL) && window.parent === window));
+  b.hidden = !inSplit && (mode !== 'live' || seatId == null || !LOCAL || !splitUp || window.parent !== window);
   b.textContent = inSplit ? 'Hide explorer' : 'IMD Explorer';
   r.hidden = !inSplit;
   $('job-form').hidden = inSplit;                     // the side-by-side page has its own job list
