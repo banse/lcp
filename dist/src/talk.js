@@ -74,7 +74,26 @@ const RULES = [
   [/\b(?:visit|go to|goto|switch to|move to|show me|open)\s+(?:seat\s*)?#?(\d{1,4})\b/, (m) => ({ kind: 'page', act: 'visit', seat: +m[1] })],
   [/^(?:seat\s*)?#?(\d{1,4})$/, (m) => ({ kind: 'page', act: 'visit', seat: +m[1] })],
   [/\bdemo\b/, () => ({ kind: 'page', act: 'demo' })],
-  [/\b(?:sound|music) (on|off)\b|\b(mute|unmute)\b/, (m) => ({ kind: 'page', act: 'sound', on: m[1] ? m[1] === 'on' : m[2] === 'unmute' })],
+  // the radio (2026-10-25, owner: background music from theidm.fun, he switches it on request): theidm.fun's stations on
+  // the record player (radio.js). He switches stations and the volume; the genre is the market's, so a genre wish gets
+  // the truth. Before the sound rule: "music off" is the radio, "sound off" the house's beeps.
+  [/\b(?:radio|music|tunes?|station|player|record player) (on|off)\b|\bturn (on|off) the (?:radio|music|tunes?|record player)\b|\b(?:stop|kill|silence|shut off|turn off|switch off) the (?:music|radio|tunes?|noise|record)\b|^(?:music|radio|tunes?) ?(on|off)$/,
+    (m, n) => ({ kind: 'radio', act: /\boff\b|\b(?:stop|kill|silence|shut off)\b/.test(n) ? 'off' : 'on' })],
+  [/\bturn it off,? i'?m working\b|\bi'?m working\b.*\b(?:music|radio)\b|\b(?:music|radio)\b.*\bi'?m working\b/, () => ({ kind: 'radio', act: 'offWorking' })],
+  [/\b(?:play|put on|spin|tune(?: in)?(?: to)?|switch(?: over)? to|change to)\s+(?:the |some )?(?:station |radio |record |tunes? of |music of )?\$?(imd ?\/? ?eth|imd-eth|imd|idm|intelligent dance market|infer|chog|credits)\b/,
+    (m) => ({ kind: 'radio', act: 'tune', name: m[1] })],
+  [/\b(?:radio|station|tune in)\s+\$?(imd ?\/ ?eth|imd-eth|imd|idm|infer|chog|credits)\b/, (m) => ({ kind: 'radio', act: 'tune', name: m[1] })],
+  [/\bnext (?:station|record|channel|track|tune|song)\b|^skip$|\bother station\b|\bchange the (?:station|record|channel)\b/, () => ({ kind: 'radio', act: 'next' })],
+  [/\bwhat'?s (?:playing|on the radio|this (?:music|song|track|tune|noise))\b|\bwhat (?:is|'s) (?:this|that|the) (?:music|song|tune|track|station|noise)\b|\bwhich (?:station|record)\b|\bnow playing\b|\bwhat (?:are we|am i) listening to\b|^(?:the )?(?:radio|music|tunes?)\??$/,
+    () => ({ kind: 'radio', act: 'now' })],
+  [/\b(?:louder|turn (?:it|the (?:music|radio|volume)) up|volume up|crank it|pump it up|more volume)\b/, () => ({ kind: 'radio', act: 'volume', delta: 1 })],
+  [/\b(?:quieter|softer|turn (?:it|the (?:music|radio|volume)) down|volume down|too loud|lower the (?:music|radio|volume))\b/, () => ({ kind: 'radio', act: 'volume', delta: -1 })],
+  [/\bstations\b|\brecord collection\b|\b(?:what|which) records\b|\bwhat can (?:you|we) play\b|\bwhat'?s in the cabinet\b/, () => ({ kind: 'radio', act: 'list' })],
+  [/\b(dub ?techno|techno|electro|acid|ambient(?: idm)?|drone|liquid(?: dnb)?|dnb|drum (?:and|n|'n') bass|future garage|garage|trip-?hop|lo-?fi(?: house)?|wonky|house music|jazz|rock music|metal|hip-?hop|rap|pop music|classical|schlager|country music)\b/,
+    (m) => ({ kind: 'radio', act: 'genre', genre: m[1] })],
+  [/\brequest (?:a )?(?:song|track|tune)\b|\bsong request\b|\bplay (?:me )?(?:a |some )?(?:song|track|tune)\b|\bdedicat/, () => ({ kind: 'radio', act: 'request' })],
+  [/\bplay (?:me )?(?:some |the )?(?:music|radio|tunes?)\b|\bput (?:some |the )?(?:music|radio) on\b|\bmusic please\b|\bput on a record\b/, () => ({ kind: 'radio', act: 'on' })],
+  [/\bsound (on|off)\b|\b(mute|unmute)\b/, (m) => ({ kind: 'page', act: 'sound', on: m[1] ? m[1] === 'on' : m[2] === 'unmute' })],
   [/\blegend\b/, () => ({ kind: 'page', act: 'legend' })],
   [/\b(hide|close) (?:the )?(?:imd )?explorer\b/, () => ({ kind: 'page', act: 'hideExplorer' })],
   [/\b(show|open) (?:it )?(?:on )?(?:the )?(?:imd )?explorer\b|\bsplit view\b/, () => ({ kind: 'page', act: 'showExplorer' })],
@@ -118,6 +137,9 @@ const RULES = [
   [/\binference\b|\btokens? used\b|\bhow much thinking\b/, () => ({ kind: 'ask', topic: 'inference' })],
   // IMD burns: the burn tracker (owner, 2026-10-24); after inference, so "inference tokens burned" stays that
   [/\bburn(s|ed|ing|t|er|ers)?\b|\bburn ?(rate|tracker)\b|\bdeflation(ary)?\b/, () => ({ kind: 'burn' })],
+  // IMD or swarm news (owner, 2026-10-26): he fetches The IMD Daily from the mailbox and reads it; a click on him leafs through it
+  [/\b(?:imd|swarm|ecosystem)\s+(?:news|headlines?|gossip|updates?|papers?)\b|\b(?:news|headlines?|newspaper|gazette|the daily|imd daily|daily issue|today'?s (?:issue|paper|edition|news))\b|\bwhat'?s (?:new|the latest|the news|in the news)\b|\banything new\b|\bwhat happened (?:today|this week|lately|yesterday)\b|\bread (?:me )?the (?:news|paper)\b|\bany (?:news|updates)\b|\blatest issue\b/,
+    () => ({ kind: 'news' })],
   [/\bwho('?s| is| are)? working\b|\bbusy seats\b|\bwho works\b/, () => ({ kind: 'ask', topic: 'whoWorking' })],
   [/\bwhat are you (doing|working on)\b|\bworking on\b|\bcurrent (job|task|step)\b|\bstatus\b|\bare you busy\b/, () => ({ kind: 'ask', topic: 'working' })],
   [/\bstats\b|\bhow many tasks\b|\btrack record\b|\bscore\b|\baccept(ed|ance)\b|\breject(ed|ions)?\b|\bhow are you( doing)?\b|\bhow'?s it going\b|\bperformance\b|\bwin rate\b/, () => ({ kind: 'ask', topic: 'stats' })],
@@ -157,7 +179,8 @@ const RULES = [
   [/\b(paint|draw|art|easel)\b/, () => ({ kind: 'do', act: 'paint' })],
   [/\b(telescope|stars|sky)\b/, () => ({ kind: 'do', act: 'telescope' })],
   [/\b(dance|party|vibe)\b/, () => ({ kind: 'do', act: 'dance' })],
-  [/\b(get to work|go to work|work harder|ship it|ship)\b/, () => ({ kind: 'egg', act: 'work' })],
+  [/\b(get to work|go to work|work harder|ship it|ship)\b/, () => ({ kind: 'egg', act: 'work' })],  // last: play <anything else> is a record he does not have (the things to do above keep play piano, play with the dog)
+  [/^(?:play|put on|tune(?: in)? to)\s+(?:the |some |me )?\$?([a-z][a-z0-9]{1,20})\??$/, (m) => ({ kind: 'radio', act: 'tune', name: m[1] })],
 ];
 
 // a short yes or no, the answer to a question he asked (main.js keeps what was asked)
@@ -192,6 +215,8 @@ export const HELP = [
   'page: visit 1299, random seat, follow job 2c8d4004, random job, show job <id>, show explorer, hide explorer,',
   '      demo, sound on, legend, or paste a job id or its explorer link: he follows it while it runs',
   'market: price 0x…, chart 0x…, buy 0x…, sell 0x… (a contract address; a ticker gets you a question), imd and eth',
+  'radio: radio on / off, play infer (imd/eth, $idm, infer, chog), next station, what\'s playing, louder, quieter, stations',
+  'news: imd news, swarm news, what\'s new, headlines: he reads The IMD Daily; click him while he reads to leaf through it',
   'and: nfts, floor prices or alpha (he has a tip), imd burns (the burn tracker)',
   'and the usual words. He is a seat, not a financial advisor.',
 ].join('\n');
@@ -215,6 +240,55 @@ export const DO = {
   nap: 'Napping. Do not tag me.', mailcheck: 'Checking the mailbox. Hoping for an airdrop.',
   paint: 'Painting a 1/1. Floor price: this kitchen.', telescope: 'Looking at the stars. Same as looking at charts, but prettier.',
   dance: 'Dancing like the chart in 2021.', touchGrass: 'Fine. Touching grass. It\'s... grassy. Bearish.',
+};
+// the radio, in his voice (radio.js; main.js radioTalk): stations, never genres (the market picks those)
+// the Sworn card over the fireplace (sworn.js): a tap on it and he tells you it's his onchain trophy, proud and ironic
+const TROPHY_WHAT = { Swarmed: 'holding a seat', Spawned: 'showing up', 'Zero-Shot': 'being early', Hopper: 'hopping', Bullfrog: 'putting ETH in',
+  Benchmarked: 'carrying weight', Uptime: 'still being here', Holdout: 'the last stand', 'Final Token': 'being the last one in',
+  Hotfix: 'saving the hour', PID: 'the first thousand', 'Top Weights': 'the top 32', Pretrained: 'not being born yesterday' };
+export function trophyLine(card, r = Math.random) {
+  const lit = (card && card.cells ? card.cells : []).filter((c) => c.level > 0).map((c) => TROPHY_WHAT[c.name] || c.name.toLowerCase());
+  const list = lit.length <= 1 ? lit.join('') : lit.slice(0, -1).join(', ') + ' and ' + lit[lit.length - 1];
+  const n = lit.length;
+  const lines = n === 0 ? [
+    'That\'s my onchain trophy. Zero cells lit: the chain looked at my whole career and said "noted". Proud anyway.',
+    'My Sworn card. Empty hive, full heart. Every fact I ever did is still pending, like my airdrop.',
+  ] : n === 1 ? [
+    `That\'s my onchain trophy: one cell lit, for ${list}. Years of degen research and the chain remembers exactly one thing. I\'m framing it. Mentally.`,
+    `My Sworn card. ${list.charAt(0).toUpperCase() + list.slice(1)}, proven onchain, no take-backs. The other twelve cells are "in progress", like my portfolio.`,
+  ] : [
+    `That\'s my onchain trophy: ${n} of 13 cells lit, for ${list}. The chain wrote it all down, so I can\'t deny any of it. Prouder than a bagholder at break-even.`,
+    `My Sworn card, ${n} facts sworn onchain: ${list}. No roadmap, no promises, just receipts. Few.`,
+  ];
+  return pick(lines, r);
+}
+// The IMD Daily (daily.js, news.js): what he says around the paper
+export const NEWS = {
+  fetching: 'He shuffles to the mailbox for the paper…',
+  none: 'No paper in the mailbox: The IMD Daily didn\'t answer. Read it there:',
+  busy: 'The paper\'s at the door. Read it yourself:',
+  ready: 'The paper\'s in my hands. Click me and read along.',
+};
+export const RADIO = {
+  on: (label) => `Radio on: ${label}. Every trade is a note, ser.`,
+  off: ['Radio off. Finally some silence.', 'Needle up. The market can hum to itself.'],
+  offWorking: 'I\'m the one working here, ser. Fine. Off.',
+  tuned: (label) => `Put on ${label}. Let the pool play.`,
+  same: (label) => `${label} is already on. Listen closer.`,
+  working: 'I\'m working, change it yourself. Fine, the dog will manage.',
+  asleep: 'Zzz. (The radio switches on its own; he sleeps through it.)',
+  nowOff: 'Nothing. The radio is off: say radio on.',
+  armed: (label) => `${label} starts at your first click or key: the browser wants that before any sound.`,
+  now: (st, stage, rate) => `${st.label} on theidm.fun: ${st.chain}'s pool, live, ${rate == null ? 'the trades are the notes' : rate === 0 ? 'no trade in the last ten minutes' : rate + (rate === 1 ? ' trade' : ' trades') + ' in the last ten minutes'}. ${['The grid is live.', 'Ten quiet minutes: the hats are fading.', 'Half an hour quiet: pad, bass, a soft kick.', 'An hour without a trade: drone.'][stage || 0]}`,
+  unknown: (name) => `No record of ${name} in the cabinet. I have IMD/ETH, $IDM, INFER/IMD and CHOG/MON.`,
+  pending: (p) => `${p.label} is ${p.note}: nothing to play yet. IMD/ETH, $IDM, INFER/IMD or CHOG/MON?`,
+  genre: (g) => `${g}? The market picks the genre, not me. Every trade is a note: buy something and the note changes.`,
+  request: 'Requests go to the pool, ser. Buy something and you\'ve written a note.',
+  louder: (pct) => `Louder: ${pct}%. The neighbours are seats, they don\'t mind.`,
+  quieter: (pct) => `Quieter: ${pct}%. Lo-fi beats to grind tasks to.`,
+  max: 'That\'s as loud as it goes. The frame has one knob.',
+  min: 'Any quieter and it\'s off. Say radio off.',
+  stations: (list, current) => `The cabinet: ${list.map((s) => (s.key === current ? s.label + ' (on)' : s.label) + ', ' + s.chain).join('; ')}; CREDITS still pending. Say play <name>.`,
 };
 export const EGG = {
   gm: ['gm.', 'gm. Coffee first, alpha later.', 'gm. Still here, still building.'],

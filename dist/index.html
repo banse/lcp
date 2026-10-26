@@ -27,7 +27,9 @@
     <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog">Legend</button>
     <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
     <button type="button" id="sound-btn" class="quiet" aria-pressed="false">Sound off</button>
-    <!-- like explorer.imd.fun's switch: the button names the other mode -->
+    <!-- the radio (2026-10-25, owner: the button in the header next to Sound): theidm.fun's station, src/radio.js -->
+    <button type="button" id="radio-btn" class="quiet" aria-pressed="false" data-feature="radio" title="Background music from theidm.fun: the live sound of a token's pool">Radio off</button>
+    <!-- like explorer.imd.fun's switch: the icon shows the other mode; its name stays for screen readers only (owner, 2026-10-25: no text) -->
     <button type="button" id="mode-btn" class="quiet mode-btn" aria-label="switch between light and dark" title="light / dark"><svg
       viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"
       stroke-linecap="round" stroke-linejoin="round"><path class="moon" d="M15.5 12.5A6.5 6.5 0 0 1 7.5 4.5a6.5 6.5 0 1 0 8 8z"/><g
@@ -77,6 +79,17 @@
           <button type="button" id="letter-close">Close</button>
         </article>
       </div>
+      <!-- The IMD Daily (2026-10-26): a click on him while he reads the paper; one page of the issue's PDF at a time (src/news.js, pdf.js vendored in assets/pdfjs/) -->
+      <div id="news-pop" class="letter-pop" hidden>
+        <article class="letter news-card" role="dialog" aria-labelledby="news-head">
+          <h2 id="news-head">The IMD Daily</h2>
+          <p id="news-meta" class="small-ink"></p>
+          <div id="news-stage" class="news-stage"><canvas id="news-page" width="2" height="2" aria-label="A page of the issue"></canvas><p id="news-msg" class="news-msg"></p></div>
+          <div class="news-nav"><button type="button" id="news-prev" class="quiet-ink">‹ Previous</button><span id="news-count"></span><button type="button" id="news-next" class="quiet-ink">Next ›</button></div>
+          <p class="small-ink">Swipe or use the arrow keys. Read it free on <a id="news-open" href="https://the-imd-daily-free-to-read-colle.sites.imd.fun/" target="_blank" rel="noopener noreferrer">The IMD Daily</a>, a newspaper made with the swarm; a copy collects there for 0.1 IMD during its 24-hour window (a copy conveys no rights; not financial advice).</p>
+          <button type="button" id="news-close">Close</button>
+        </article>
+      </div>
       <!-- his whiteboard large: the job his seat works on, his steps ringed (main.js, boardSvg) -->
       <div id="board-pop" class="letter-pop" hidden>
         <article class="letter board-card" role="dialog" aria-labelledby="board-head">
@@ -102,10 +115,17 @@
     <form id="talk-form" class="talk-line" autocomplete="off">
       <label for="talk-input" class="talk-prompt">&gt;</label>
       <input id="talk-input" type="text" maxlength="160" spellcheck="false" enterkeyhint="send"
-        placeholder="talk to him: feed the dog, how long do you live here?, buy imd, help">
+        placeholder="talk to him: feed the dog, buy imd, how long do you live here?, play music, help">
     </form>
     <p id="talk-reply" class="talk-reply" aria-live="polite"></p>
   </section>
+  <!-- the radio (2026-10-25): a theidm.fun station plays in a hidden frame of their stream page (src/radio.js, audio only);
+       the record player in the music room shows it; the Radio button sits in the top bar next to Sound. The frame exists
+       only while it plays (removed on off), and a browser lets it start only after the visitor's first click or key -->
+  <!-- the line naming the station (switched off by the owner, 2026-10-25: "remove this line"; FEATURES.radioLine brings it back) -->
+  <p id="radio-line" class="radio-line" data-feature="radioLine" aria-live="polite">♪ <b id="radio-station">Radio</b> <span id="radio-note">off</span>
+    <a id="radio-open" href="https://theidm.fun/" target="_blank" rel="noopener noreferrer" title="theidm.fun: every trade is a note">theidm.fun</a></p>
+  <div id="radio" data-feature="radio" aria-hidden="true"></div>
 
   <!-- a chart or swap page he opened, when the side-by-side page is not around (a hosted copy, or the house alone);
        straight from its own site, sandboxed so it cannot move this page. Off in the swarm build (FEATURES.marketPane,
@@ -122,7 +142,8 @@
         <ol id="diary" aria-live="polite"><li class="empty">What he does will show up here.</li></ol>
       </div>
     </div>
-    <div class="side">
+    <!-- the counters (switched off by the owner, 2026-10-26: "remove this panel"; FEATURES.counters brings them back) -->
+    <div class="side" data-feature="counters">
       <div class="counters">
         <h2 id="st-head">The seat</h2>
         <dl>
@@ -171,6 +192,17 @@
         <tr><td>More chimney smoke</td><td>the effort of that premium work: a thin wisp at minimal or low, thick fast billows at max or ultra; other tiers publish no effort and keep the usual puffs</td></tr>
         <tr><td>A symbol in his bubble while he works</td><td>the model, by its name: a note for Opus, a quill for Sonnet, a leaf for Haiku, a book for Fable, a star for Astra, the sun for Sol, the moon for Luna</td></tr>
         <tr data-feature="machineTicker"><td>A green ticker on top of the machine wall, and its big dial</td><td>while the seat works: the provider (Claude Code or Codex), the model of the step it runs and its effort on the dial, low to high; "?" when the effort is not published for that model's tier (read through the local relay)</td></tr>
+        <tr><td>The record turns, one sleeve in the cabinet pulled up, a line under the house names the station</td><td>the radio (2026-10-25): a theidm.fun station plays, the live sound of a token's pool, every swap a note; it starts at your first click or key (the browser's rule) and this browser remembers on, off, station and volume</td></tr>
+        <tr><td>A note rises over the record player</td><td>a trade in the station's pool</td></tr>
+        <tr><td>He jumps up and dances with the dog; the dog howls</td><td>a whale bought, or sold, on the station (theidm's line: about 0.02 x the square root of the pool's FDV in ETH)</td></tr>
+        <tr><td>He yawns and the music room dims</td><td>an hour without a trade: the music is down to a drone</td></tr>
+        <tr><td>Fireworks, and he hangs a record beside the pictures</td><td>a track finished onchain on $IDM (the hook's TrackComplete)</td></tr>
+        <tr><td>The dog barks at the stairs while the record changes</td><td>you changed the station while he works: he won't get up, the dog manages</td></tr>
+        <tr><td>He fetches the paper from the mailbox and reads it in the living room</td><td>you asked for IMD or swarm news: The IMD Daily, a newspaper made with the swarm (ERC-1155 editions on Ethereum); click him while he reads to leaf through the latest issue, page by page</td></tr>
+        <tr><td>A plaque on the tree</td><td>the seat's acceptance rate (accepted of all its tasks) and his trade (Seer, Auditor, Webmaster, Mechanic …): the kind of work he does more than other agents (his share of his newest tasks against the swarm's mix of 2026-10-26, at least two tasks of it; without the local relay only what the live feed showed of him)</td></tr>
+        <tr><td>A card with a hive of cells hangs over the fireplace</td><td>the seat's owner holds a Sworn card (the ownerless registry of wallet facts, a swarm launch): each cell a family of facts, grey where the wallet holds one, filled to the tier; tap it and he tells you about his onchain trophy</td></tr>
+        <tr><td>The mail carrier brings a rolled paper, it sticks out of the mailbox, he fetches it and reads</td><td>a new issue of The IMD Daily is out (the collection's issue count grew; looked at every 5 minutes); each issue comes once per browser; busy, the paper waits in the mailbox</td></tr>
+        <tr><td>The number on the mailbox</td><td>the seat's number, his house number in Swarmstreet</td></tr>
         <tr><td>The clock on the mantel rings</td><td>a schedule opened the job or question he starts</td></tr>
         <tr><td>He knocks on the glass</td><td>shown only to the seat's owner: the worker needs an update</td></tr>
         <tr><td>He types you a letter</td><td>once a day: what the seat did since your last visit; if he's asleep or out, he left it as a note</td></tr>

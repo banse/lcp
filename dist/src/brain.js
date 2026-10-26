@@ -21,16 +21,20 @@ export class House {
     this.state = { action: null, asleep: false, away: false, sign: false, working: false, smoke: false, phoneRinging: false,
       mailbox: 0, mailDue: 0, parcelDue: false, outgoing: 0, tvStatic: false, frames: 0, doorOpen: false, parcel: false,
       needsUpdate: false, installProgress: 0, atStation: null, fireworks: 0, bigFireworks: 0, alarm: 0, machine: null,
-      chart: null, chartHold: 0, buying: null };
+      chart: null, chartHold: 0, buying: null, radio: null, radioNote: 0, radioHowl: 0,   // radio: main.js (radio.js houseState)
+      paper: false, paperDue: false, seatNo: null };                                         // the day's IMD Daily in the mailbox; the number on it
     this.pace = 1;               // walking speed, 1 = his usual (buying IMD makes him run, a lost trade makes him drag)
     this.flash = null;           // {icon, left}: a quick reaction over his head (talking to him while he works)
     this.walkout = false;        // he left with the dog because he was asked too much (talk.js)
     this.queue = [];
     this.current = null;
     this.cooldown = {};
+    this.timers = [];             // [{left, fn}]: things that happen in a few ticks (the radio switching when he gets there)
     this.seedRoutine(seed);
     this.onLetterDone = null;     // (why, late): why = 'bed' or 'away' when he left it as a note
     this.onKnock = null;          // (info) => the page shows its message to the owner
+    this.onRecords = null;        // (on) => he put a record on / left the player (main.js: the radio, when the visitor's is off)
+    this.onPaper = null;          // () => the mail carrier dropped the day's IMD Daily into the mailbox (main.js: he reads it)
     this.knockAck = false;
   }
 
@@ -121,6 +125,11 @@ export class House {
       // a step of the job on his whiteboard changed (main.js): he walks over and taps it, then goes back to his work
       case 'board': if (!this.queue.some((q) => q.name === 'board') && !(this.current && this.current.name === 'board')) this.push(3.5, 'board', () => this.tapBoard()); break;
       case 'walkout': if (!this.walkout) this.push(9.6, 'walkout', () => this.walkOut(e.seconds || 90)); break;
+      // the radio (main.js, radio.js): he puts a record on or lifts the arm, a note rises at a trade, a whale has him dance
+      // and the dog howl, an hour of silence has him yawn, a finished $IDM track hangs as a record beside the pictures
+      case 'radio': this.radioEvent(e); break;
+      // a new issue of The IMD Daily (main.js dailyWatch): the mail carrier brings the paper to the mailbox
+      case 'daily': if (!s.paper && !(this.carrier && this.carrier.kind === 'paper')) s.paperDue = true; break;
       case 'workdone': s.working = false; break;
       case 'post': this.push(4, 'post', () => this.post()); break;
       case 'accepted': case 'rejected': this.letterFor(e.type === 'accepted', e.n); break;
@@ -181,6 +190,9 @@ export class House {
     if (this.state.alarm > 0) this.state.alarm--;
     if (this.state.chartHold > 0 && --this.state.chartHold === 0) this.state.chart = null;
     if (this.flash && --this.flash.left <= 0) this.flash = null;
+    if (this.state.radioNote > 0) this.state.radioNote--;
+    if (this.timers.length) { const due = this.timers.filter((x) => --x.left <= 0); this.timers = this.timers.filter((x) => x.left > 0); for (const x of due) x.fn(); }
+    if (this.state.radioHowl > 0) this.state.radioHowl--;
     if (this.state.phoneRinging && t % 30 === 0) this.sound.ring();
   }
 
@@ -336,10 +348,77 @@ export class House {
       paint: () => this.station('easel', () => false, 9), telescope: () => this.station('telescope', () => false, 8),
       dance: () => this.act('dance', 'dance', 5, 'note'), lfg: () => this.act('dance', 'dance', 4, 'star'),
       gm: () => this.act('gm', 'stretch', 1.6, 'heart'), nope: () => this.act('nope', 'puzzled', 2, 'bang'),
-      moon: () => this.moon(), touchGrass: () => this.touchGrass(), lookup: () => this.lookup(done),
+      moon: () => this.moon(), touchGrass: () => this.touchGrass(), lookup: () => this.lookup(done), news: () => this.readNews(done),
       trade: () => this.trade(done), buy: () => this.buyImd(done),
     };
     return scenes[act] || null;
+  }
+
+  // the radio's scenes. Busy (working, asleep, out, walked out) he stays put: the dog barks at the stairs until the record
+  // changes, a whale gets a star over his head and the dog's party; otherwise he walks to the record player. e.done
+  // (main.js: the frame switches) runs when he lifts the arm, when the dog gets to the stairs, at once when nobody is
+  // home to do it, and at the latest after 16 s (a higher event may cut his walk short); once.
+  radioEvent(e) {
+    const s = this.state, busy = s.working || s.asleep || s.away || this.walkout, home = !s.asleep && !s.away && !this.walkout;
+    const scene = (gen, prio = 6.5) => {
+      this.queue = this.queue.filter((q) => q.name !== 'command');
+      if (this.current && this.current.name === 'command') this.current = null;
+      this.push(prio, 'command', gen);
+    };
+    let fired = false;
+    const done = () => { if (fired) return; fired = true; if (e.done) e.done(); };
+    const latest = (ticks) => { this.timers.push({ left: ticks, fn: done }); };
+    switch (e.act) {
+      case 'tune':
+        if (busy) {
+          if (home) { const d = this.dog, to = FLIGHTS[0].bottom[0] - 14; this.dogTo(to, 'party', 4); latest(Math.ceil(Math.abs(d.x - to) / 0.9) + sec(0.8)); }
+          else done();
+          break;
+        }
+        latest(sec(16)); scene(() => this.putOn(done)); break;
+      case 'off':
+        if (busy) { done(); break; }
+        latest(sec(16)); scene(() => this.needleUp(done)); break;
+      case 'note': s.radioNote = sec(1.4); break;
+      case 'whaleBuy':
+        if (busy) { this.flash = { icon: 'star', left: sec(3) }; if (home) this.dogTo(this.man.floor === 0 ? this.man.x + 16 : 230, 'party', 6); break; }
+        scene(() => this.whaleDance(), 6.7); break;
+      case 'whaleSell':
+        s.radioHowl = sec(5);
+        if (home) this.dogTo(this.dog.x, 'howl', 5);
+        if (!busy) this.flash = { icon: 'dots', left: sec(3) };
+        break;
+      case 'yawn': if (!busy) scene(() => this.act('yawn', 'stretch', 2.2, 'z'), 1.5); break;
+      case 'track':
+        s.fireworks = Math.max(s.fireworks, sec(12));
+        if (!busy) scene(() => this.hangRecord(), 6.6);
+        break;
+      default: break;
+    }
+  }
+  *putOn(done) { yield* this.goTo('records'); yield* this.act('records', 'stand', 1.2); if (done) done(); yield* this.act('records', 'dance', 2.6, 'note'); }
+  *needleUp(done) { yield* this.goTo('records'); yield* this.act('needle', 'reach', 0.7); if (done) done(); yield* this.act('needle', 'stand', 0.6); }
+  *whaleDance() {
+    if (this.man.floor === 0) this.dogTo(this.man.x + 16, 'party', 7);
+    yield* this.act('cheer', 'dance', 5, 'star');
+    this.dog.mode = undefined;
+  }
+  *hangRecord() { this.man.carry = 'frame'; yield* this.goTo('frames'); this.man.carry = null; yield* this.act('hang', 'hang', 1.5, 'note'); }
+
+  // IMD or swarm news (2026-10-26): the paper from the mailbox, then the armchair in front of the TV (which stays off): seen
+  // from behind, the paper unfolded in both hands (owner, 2026-10-26). The visitor can click him there (main.js opens The
+  // IMD Daily); done() when he starts reading (the headline).
+  *readNews(done) {
+    const m = this.man;
+    yield* this.goTo('mailbox');
+    yield* this.act('pickup', 'reach', 0.8);
+    this.state.paper = false;                                   // the delivered paper leaves the mailbox with him
+    m.carry = 'paper';
+    yield* this.goTo('armchair');
+    m.carry = null; m.seat = 12;
+    if (done) done();
+    yield* this.act('news', 'tvsit', 26);
+    m.seat = 10;
   }
 
   // a question about data: he hurries to the machine, types, then the answer (done)
@@ -570,7 +649,12 @@ export class House {
         yield* this.goTo('piano'); this.man.seat = 10;
         yield* this.act('piano', 'piano', 14 + Math.random() * 10, 'note', (i) => { if (i % 9 === 0) this.sound.note(); });
       },
-      *records() { yield* this.goTo('records'); yield* this.act('records', 'stand', 1.5); yield* this.act('records', 'dance', 8, 'note'); },
+      *records() {                                                  // his own record: the radio plays while he is there (main.js onRecords)
+        yield* this.goTo('records'); yield* this.act('records', 'stand', 1.5);
+        if (this.onRecords) this.onRecords(true);
+        yield* this.act('records', 'dance', 8, 'note');
+        if (this.onRecords) this.onRecords(false);
+      },
       *cook() { yield* this.goTo('stove'); yield* this.act('cook', 'cook', 10); yield* this.goTo('sink'); yield* this.act('eat', 'eat', 6); },
       *snack() { yield* this.goTo('fridge'); yield* this.act('snack', 'stand', 2); yield* this.act('eat', 'eat', 4); },
       *book() { yield* this.goTo('shelf'); yield* this.act('book', 'read', 14 + Math.random() * 8, null); },
@@ -625,6 +709,7 @@ export class House {
     if (!this.carrier) {
       if (s.mailDue > 0) { this.carrier = this.newCarrier('letter'); this.carrier.letters = s.mailDue; s.mailDue = 0; }
       else if (s.parcelDue) { this.carrier = this.newCarrier('parcel'); s.parcelDue = false; }
+      else if (s.paperDue) { this.carrier = this.newCarrier('paper'); s.paperDue = false; }
       else return;
     }
     const c = this.carrier;
@@ -633,7 +718,9 @@ export class House {
     if (c.phase === 'in') { c.face = 1; c.x += 0.9; c.pose = 'walk'; if (c.x >= stop) { c.phase = 'drop'; c.wait = sec(1); c.pose = 'stand'; } }
     else if (c.phase === 'drop') {
       if (--c.wait <= 0) {
-        if (c.kind === 'parcel') s.parcel = true; else { s.mailbox += c.letters; s.outgoing = 0; }
+        if (c.kind === 'parcel') s.parcel = true;
+        else if (c.kind === 'paper') { s.paper = true; if (this.onPaper) this.onPaper(); }
+        else { s.mailbox += c.letters; s.outgoing = 0; }
         c.carry = null; this.sound.clunk(); c.phase = 'out';
       }
     }

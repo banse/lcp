@@ -4,12 +4,19 @@ import { House } from './brain.js';
 import { LiveFeed, DemoFeed, JobFollower, SwarmJobs, isAsleep } from './feed.js';
 import { wallets, connect, seatsOf } from './wallet.js';
 import { Sound } from './sound.js';
-import { CATEGORIES } from './mapping.js';
+import { CATEGORIES, expertise } from './mapping.js';
+import { taskCategory } from './feed.js';
 import { THEMES, DEFAULT_THEME } from './themes/index.js';
 import { THINGS } from './themes/imd-layout.js';
 import { setPhase } from './world.js';
 import { parse, answer, pick, stressCost, HELP, BUSY, DO, EGG, UNKNOWN, ASLEEP, AWAY, OUT, WALKOUT, LOOKUP, STRESS, MARKET, marketText,
-  SWORN, BURN } from './talk.js';
+  SWORN, BURN, RADIO, NEWS, trophyLine } from './talk.js';
+import { DAILY, latestIssue, issueLine, paperLines } from './daily.js';
+import { NewsReader } from './news.js';
+import { cardOf } from './sworn.js';
+import { SWORN_FRAME } from './themes/imd.js';
+import { Radio, STATIONS, PENDING, GAIN, stationByName, stationFor, sadStation, SITE as THEIDM } from './radio.js';
+import { StationFeed, SILENCE, amount } from './stationfeed.js';
 import { IMD_CA, WETH, CHAINS, launchOf, quote, chartUrl, swapUrl, usd, DEFINED_URL, LLAMA_URL } from './market.js';
 import { LOCAL, RELAY } from './env.js';
 import { BUILD } from './build.js';
@@ -23,7 +30,14 @@ const $ = (id) => document.getElementById(id);
 // version without iframe features; "the server version should have all features"); off, he answers with the link
 // boardSeats: a "Working now" row of buttons under the large whiteboard (2026-10-25; switched off the same day, owner:
 // "just make the cards directly clickable … without extra buttons"); the cards switch the seat either way
-const FEATURES = { lookSwitch: false, wallet: false, machineTicker: false, marketPane: BUILD !== 'swarm', boardSeats: false };
+// radio: theidm.fun's stations as the house's background music (2026-10-25, radio.js), in every build; radioLine: the line
+// under the command line naming the station (switched off the same day, owner: "remove this line"; the button in the
+// top bar next to Sound stays, its title names the station)
+// news: The IMD Daily on IMD or swarm news (2026-10-26, daily.js, news.js), in every build
+// sworn: the seat owner's Sworn card over the fireplace (2026-10-26, sworn.js), in every build
+// counters: the Tasks / Accepted / Rejected / Failed panel under the house (switched off by the owner, 2026-10-26: "remove this
+// panel"; the plaque on the tree carries the acceptance rate and his expertise instead, FEATURES.plaque)
+const FEATURES = { lookSwitch: false, wallet: false, machineTicker: false, marketPane: BUILD !== 'swarm', boardSeats: false, radio: true, radioLine: false, news: true, sworn: true, counters: false, plaque: true };
 // a switched-off feature's elements are hidden; the others keep their own state (the pane stays hidden until it shows a page)
 for (const el of document.querySelectorAll('[data-feature]')) if (!FEATURES[el.dataset.feature]) el.hidden = true;
 
@@ -51,6 +65,76 @@ let g = canvas.getContext('2d');
 let theme = (FEATURES.lookSwitch && THEMES[store('seathouse:theme')]) || THEMES[DEFAULT_THEME];
 
 const sound = new Sound();
+
+// ---------- the radio: theidm.fun's stations on the record player (radio.js; what plays, read from the pool: stationfeed.js) ----------
+// The visitor's choice (on, station, volume) lives in this browser; a browser plays nothing before the first click or
+// key, so a wanted radio starts at that first interaction. While it plays the house reads the station's pool itself and
+// reacts to what the visitor hears; when it is off, nothing is read.
+const radio = new Radio({ store: { get: (k) => store(k), set: (k, v) => store(k, v) }, onChange: radioChanged });
+const stationFeed = new StationFeed(onStationEvent);
+// The IMD Daily: the popup reader, and the issue he read last (a click on him while he reads opens it)
+const news = FEATURES.news ? new NewsReader() : null;
+let newsIssue = null;
+let radioStage = 0, radioBpm = 100, radioRate = null, radioFeedKey = null, sadTimer = null;
+function radioSync() {
+  if (!house) return;
+  house.state.radio = FEATURES.radio ? radio.houseState({ bpm: radioBpm, stage: radioStage }) : null;
+  house.onPaper = onPaper;
+  // his own record (the routine, or "spin a record"): music while he is at the player, even with the visitor's radio off
+  house.onRecords = (on) => {
+    if (!FEATURES.radio || radio.on) return;
+    if (on) { radio.playFor('records'); if (radio.live) addDiary(`He puts a record on: ${radio.label()}.`); }
+    else { if (radio.live) addDiary('He lifts the needle.'); radio.stopFor('records'); }
+  };
+}
+function radioChanged(r) {
+  if (!FEATURES.radio) return;
+  const st = r.station;
+  const note = r.live ? `live from its pool on ${st.chain}` : r.armed ? 'starts at your first click or key' : 'off';
+  $('radio-station').textContent = st.label; $('radio-note').textContent = note;
+  $('radio-open').href = THEIDM + '?net=' + st.key; $('radio-open').title = `${st.label} on theidm.fun: the live sound of its pool, every trade a note`;
+  $('radio-btn').textContent = r.on ? 'Radio on' : 'Radio off'; $('radio-btn').setAttribute('aria-pressed', String(r.on));
+  $('radio-btn').title = `${st.label} on theidm.fun, ${note}: background music, the live sound of a token's pool`;
+  radioSync();
+  const key = r.live ? st.key : null;
+  if (key !== radioFeedKey) { radioFeedKey = key; radioStage = 0; radioRate = null; if (key) stationFeed.start(st); else stationFeed.stop(); radioSync(); }
+}
+// the station's pool, as the stream page reads it: a note per trade, whales, pulses, the silence stages, a finished track
+function onStationEvent(e) {
+  const st = radio.station;
+  if (e.type === 'tick') {
+    radioBpm = e.bpm; radioRate = e.rate;
+    if (e.stage !== radioStage) {
+      const up = e.stage > radioStage; radioStage = e.stage;
+      if (house && radio.live && (up || e.stage === 0)) addDiary(`${st.label}: ${SILENCE[e.stage]}.`);
+      if (e.stage === 3 && house) house.event({ type: 'radio', act: 'yawn' });
+    }
+    radioSync(); return;
+  }
+  if (!house || !radio.live) return;
+  if (e.type === 'swap') {
+    house.event({ type: 'radio', act: 'note' });
+    if (e.pulse) addDiary(`A pulse kept the music alive: $IDM's treasury bought ${amount(e, st)}.`);
+    else if (e.whale) {
+      house.event({ type: 'radio', act: e.isBuy ? 'whaleBuy' : 'whaleSell' });
+      addDiary(e.isBuy ? `A whale bought ${st.ticker}: ${amount(e, st)}. The kick just got heavier.` : `A whale sold ${st.ticker}: ${amount(e, st)}. A track went quiet; the dog howls.`);
+    }
+    if (radioStage) { radioStage = 0; radioSync(); }
+    return;
+  }
+  if (e.type === 'track') { radio.tracks++; house.event({ type: 'radio', act: 'track' }); radioSync(); addDiary(`Track #${e.trackNo} of $IDM finished onchain. Fireworks, and a record for the wall.`); return; }
+  if (e.type === 'error') addDiary(`Can't read ${st.label}'s pool right now (${e.message}). The radio plays on; he just can't hear the trades.`);
+}
+// a rejection: the sad record for a while (seeded by the seat, never the one playing), then the visitor's choice again
+function sadRecord() {
+  if (!FEATURES.radio || !radio.live) return;
+  const st = sadStation(seatSeed, radio.key);
+  radio.tune(st.key, 'sad', true);
+  addDiary(`He puts on the sad record: ${st.label}.`);
+  if (house) house.event({ type: 'radio', act: 'tune', done: () => radio.sync() }); else radio.sync();
+  clearTimeout(sadTimer);
+  sadTimer = setTimeout(() => { if (radio.restore('sad', true)) { addDiary(`Back to ${radio.station.label}.`); if (house) house.event({ type: 'radio', act: 'tune', done: () => radio.sync() }); else radio.sync(); } }, 45000);
+}
 let house = null, seatSeed = 4242, feed = null, seatId = null, mode = null, tick = 0;
 let pendingLetter = null, wallet = null, lastUpdate = null;
 const ownedSeats = new Set();
@@ -127,7 +211,7 @@ function visit(id, job = false, hint = null) {
   if (!job) stopFollowing();
   demo.stop(); setPhase(null);
   mode = 'live'; seatId = id;
-  house = new House(id, sound, theme); seatSeed = id; theme.setSeed(id);
+  house = new House(id, sound, theme); seatSeed = id; theme.setSeed(id); radioSync(); house.state.seatNo = id;
   house.onLetterDone = showLetter;
   house.onKnock = showKnock;
   feed = live; lastUpdate = null; hideKnock();
@@ -140,6 +224,9 @@ function visit(id, job = false, hint = null) {
   if (!job && location.hash !== '#/seat/' + id) history.replaceState(null, '', '#/seat/' + id);
   live.setSeat(id, hint);
   explorerButton();
+  plaqueRetry = 0; clearTimeout(plaqueTimer);
+  dailyPending = null; setTimeout(dailyWatch, 6000);          // a new seat: the day's paper, if this browser hasn't had it
+  if (FEATURES.sworn) swornFor(id, house);
   if (!job) resetBoard();                              // another seat: its own job on the board (a followed job stays)
   setTimeout(readBoard, 1500);
 }
@@ -158,7 +245,13 @@ function followJob(id, step = null) {
   renderJobs(jobList);
 }
 
-function stopFollowing() { follower.stop(); followed = null; renderJobs(jobList); }
+function stopFollowing() { follower.stop(); followed = null; renderJobs(jobList); if (FEATURES.radio && radio.restore('follow')) addDiary(`Back to ${radio.station.label} on the radio.`); }
+// the station follows the work (2026-10-25): a followed job about a token that has a station puts that record on
+function followRadio(job) {
+  if (!FEATURES.radio || !radio.live || !job) return;
+  const st = stationFor(job.objective);
+  if (st && st.key !== radio.key && radio.tune(st.key, 'follow', true)) { addDiary(`The job is about ${st.ticker}: he puts on ${st.label}.`); if (house) house.event({ type: 'radio', act: 'tune', done: () => radio.sync() }); else radio.sync(); }
+}
 
 function jobName(job) {
   const o = (job && job.objective || '').replace(/\s+/g, ' ').trim();
@@ -194,6 +287,7 @@ function onFollow(e) {
   }
   if (e.type === 'start') {
     setTimeout(readBoard, 300);
+    followRadio(e.job);
     if (st && st.seat !== seatId) visit(st.seat, true, e.running ? stepHint(e, st) : null);
     else if (st && e.running) live.setHint(stepHint(e, st));
     $('lede').textContent = followLede();
@@ -227,7 +321,7 @@ function startDemo() {
   live.stop();
   talkState.stress = 0; talkReply(null);
   mode = 'demo'; seatId = 'demo';
-  house = new House(4242, sound, theme); seatSeed = 4242; theme.setSeed(4242);
+  house = new House(4242, sound, theme); seatSeed = 4242; theme.setSeed(4242); radioSync(); house.state.seatNo = '0000';
   house.onLetterDone = showLetter;
   house.onKnock = showKnock; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
@@ -334,6 +428,14 @@ function onEvent(e) {
     else { pendingLetter = demoLetter(); e.letter = true; }
   } else if (SAY[e.type]) { const line = SAY[e.type](e); if (line) addDiary(line); }
   house.event(e);
+  if (FEATURES.radio) {                                     // the radio follows his day (radio.js)
+    if (e.type === 'init') { radio.setNight(!!e.asleep); radio.setBoost(!!e.working && e.category === 'audio'); }
+    if (e.type === 'sleep') { radio.setNight(true); if (radio.live) addDiary('Lights out: the radio goes low.'); }
+    if (e.type === 'wake') { radio.setNight(false); if (radio.live) addDiary('Up again: the radio comes back up.'); }
+    if ((e.type === 'work' || e.type === 'workkind') && e.category === 'audio' && !radio.boost) { radio.setBoost(true); if (radio.live) addDiary('An audio task: he turns the radio up.'); }
+    if (e.type === 'workdone' && radio.boost) radio.setBoost(false);
+    if (e.type === 'rejected') sadRecord();
+  }
   if (e.type === 'init' && e.update) lastUpdate = e.update;
   if (e.type === 'update') lastUpdate = e.info;
   if (e.type === 'updated') { lastUpdate = e.info; hideKnock(); }
@@ -370,8 +472,15 @@ $('knock-ok').addEventListener('click', () => {
   addDiary('You told him you saw it. He won\'t knock again for six hours on this version.');
 });
 
+let lastStatusError = null;
 function onStatus(s) {
-  if (s.error) { $('st-line').textContent = 'Can\'t reach the swarm (' + s.error + '). Retrying.'; return; }
+  if (s.error) {
+    $('st-line').textContent = 'Can\'t reach the swarm (' + s.error + '). Retrying.';
+    if (!FEATURES.counters && s.error !== lastStatusError) addDiary('Can\'t reach the swarm (' + s.error + '). Retrying.');
+    lastStatusError = s.error; return;
+  }
+  lastStatusError = null;
+  if (FEATURES.plaque) plaqueFor(s);
   if (house) house.idleHours = s.idleHours || 0;
   const d = s.data;
   for (const k of ['attempts', 'accepted', 'rejected', 'failed']) $('st-' + k).textContent = d ? Number(d[k]).toLocaleString('en-US') : '–';
@@ -1026,6 +1135,7 @@ async function talk(raw) {
   if (it.kind === 'page') return pageCommand(it, cmd);
   if (!house) { talkReply('Nobody lives here yet. Pick a seat first.'); return; }
   const s = house.state;
+  if (it.kind === 'radio') return radioTalk(it, cmd, s);          // the radio works whatever he does (page-like)
   if (house.walkout) return talkSay(cmd, pick(OUT));
   if (s.away) return talkSay(cmd, AWAY);
   if (it.kind === 'egg' && it.act === 'sell') { talkReply(null); addDiary(`You: "${cmd}".`); return; }   // he doesn't even look up
@@ -1056,6 +1166,7 @@ async function talk(raw) {
     house.event({ type: 'flash', icon: tier ? 'bang' : 'dots' });
     let text = pick(BUSY[tier]);
     let link = null;
+    if (it.kind === 'news') return talkSay(cmd, text + ' ' + NEWS.busy, { href: DAILY.site, label: 'The IMD Daily' });
     if (it.kind === 'ask') {
       const a = answer(it, talkContext());
       if (a.explorer && openExplorer(a.explorer)) text += ' Look it up yourself, it\'s on the explorer.';
@@ -1075,10 +1186,194 @@ async function talk(raw) {
     } });
     return;
   }
+  if (it.kind === 'news') return newsTalk(cmd, grumble);
   if (it.kind === 'do') { house.event({ type: 'command', act: it.act }); return talkSay(cmd, DO[it.act] + grumble); }
   if (it.kind === 'egg') return egg(it, cmd, grumble);
   house.event({ type: 'flash', icon: 'ask' });
   return talkSay(cmd, pick(UNKNOWN));
+}
+
+// the radio (radio.js): stations, volume, what plays; the genre is the market's. He reacts when he can (brain.js radioEvent):
+// working, the dog manages; asleep, the radio switches on its own. Grumpy, he turns it down a notch while he's at it.
+function radioTalk(it, cmd, s) {
+  if (!FEATURES.radio) return talkSay(cmd, 'No radio in this house.');
+  const lvl = stressAdd(stressCost({ kind: 'do', polite: it.polite, rude: it.rude }, s.working));
+  const grumble = lvl >= STRESS.warn ? ' (Last one. I mean it.)' : lvl >= STRESS.grumpy ? ' (Sigh.)' : '';
+  const say = (text, link = null) => talkSay(cmd, text + grumble, link);
+  const lead = s.asleep ? RADIO.asleep + ' ' : s.working ? RADIO.working + ' ' : '';
+  const st = radio.station, chart = (x) => (x.chainId === 1 ? { href: chartUrl(x.token, 'ethereum', x.pool.id), label: 'defined.fi' } : { href: THEIDM + '?net=' + x.key, label: 'theidm.fun' });
+  const scene = (act) => house.event({ type: 'radio', act, done: () => radio.sync() });   // the frame moves when he gets there
+  switch (it.act) {
+    case 'on':
+      if (radio.on && radio.live) return say(RADIO.same(radio.label()));
+      radio.setOn(true, true); scene('tune'); return say(lead + RADIO.on(radio.label()));
+    case 'off': case 'offWorking':
+      if (!radio.on) return say(RADIO.nowOff);
+      radio.setOn(false, true); scene('off'); return say(it.act === 'offWorking' ? RADIO.offWorking : pick(RADIO.off));
+    case 'tune': case 'next': {
+      let to = it.act === 'next' ? STATIONS[(STATIONS.findIndex((x) => x.key === radio.key) + 1) % STATIONS.length] : stationByName(it.name);
+      if (!to) { const p = PENDING.find((x) => x.key === String(it.name).toLowerCase()); return say(p ? RADIO.pending(p) : RADIO.unknown(it.name)); }
+      if (to.key === radio.key && radio.live) return say(RADIO.same(to.label));
+      radio.tune(to.key, null, true); if (!radio.on) radio.setOn(true, true);
+      if (lvl >= STRESS.grumpy) radio.saved.gain = Math.max(GAIN.min, radio.saved.gain - GAIN.step);
+      scene('tune'); return say(lead + RADIO.tuned(to.label));
+    }
+    case 'now':
+      if (!radio.live) return say(radio.on ? RADIO.armed(radio.label()) : RADIO.nowOff);
+      return say(RADIO.now(st, radioStage, radioRate), { href: THEIDM + '?net=' + st.key, label: 'theidm.fun' });
+    case 'volume': {
+      if (!radio.on) return say(RADIO.nowOff);
+      const before = radio.saved.gain, pct = radio.volume(it.delta * GAIN.step);
+      if (radio.saved.gain === before) return say(it.delta > 0 ? RADIO.max : RADIO.min);
+      return say(it.delta > 0 ? RADIO.louder(pct) : RADIO.quieter(pct));
+    }
+    case 'list': return say(RADIO.stations(STATIONS, radio.live ? radio.key : null));
+    case 'genre': house.event({ type: 'flash', icon: 'dots' }); return say(RADIO.genre(it.genre), chart(st));
+    case 'request': house.event({ type: 'flash', icon: 'dots' }); return say(RADIO.request, st.chainId === 1 ? { href: swapUrl(st.token, 'ethereum', 'buy'), label: 'LlamaSwap' } : chart(st));
+    default: return say(pick(UNKNOWN));
+  }
+}
+if (FEATURES.radio) {
+  const walk = (act) => (house ? house.event({ type: 'radio', act, done: () => radio.sync() }) : radio.sync());
+  $('radio-btn').addEventListener('click', () => {
+    radio.setOn(!radio.on, true); walk(radio.on ? 'tune' : 'off');
+    if (house) addDiary(radio.on ? `Radio on: ${radio.label()}.` : 'Radio off.');
+  });
+  // the record cabinet on the canvas (world units: 264..292 x 183..208): a sleeve puts that station on, the player toggles
+  const cabinetHit = (e) => {
+    const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) * 480 / r.width, y = (e.clientY - r.top) * 320 / r.height;
+    if (x < 263 || x > 293 || y < 182 || y > 209) return null;
+    const i = Math.floor((x - 280.4) / 2.6);
+    return x >= 280 && y >= 192 && i >= 0 && i < STATIONS.length ? { station: STATIONS[i] } : { toggle: true };
+  };
+  canvas.addEventListener('click', (e) => {
+    const hit = cabinetHit(e);
+    if (!hit || !house) return;
+    if (hit.station) {
+      if (hit.station.key === radio.key && radio.live) { radio.setOn(false, true); walk('off'); addDiary('Radio off.'); return; }
+      radio.tune(hit.station.key, null, true); if (!radio.on) radio.setOn(true, true);
+      walk('tune'); addDiary(`You picked a record: ${radio.label()}.`);
+    } else { radio.setOn(!radio.on, true); walk(radio.on ? 'tune' : 'off'); addDiary(radio.on ? `Radio on: ${radio.label()}.` : 'Radio off.'); }
+  });
+  canvas.addEventListener('mousemove', (e) => { if (cabinetHit(e)) canvas.style.cursor = 'pointer'; });
+}
+
+// the plaque on the tree (2026-10-26): the acceptance rate from the seat record, his expertise from his newest tasks (the
+// relay's seat detail; hosted, the steps the swarm's live feed showed for this seat), against the swarm's mix (mapping.js)
+let plaqueSaid = null, plaqueRetry = 0, plaqueTimer = null;
+function plaqueFor(s) {
+  if (!house || !s.data || s.seat !== seatId) { if (house && (!s.data || s.seat !== seatId)) house.state.plaque = null; return; }
+  const d = s.data, rate = d.attempts ? Math.round(100 * d.accepted / d.attempts) : null;
+  let recent = (live.detail && live.detail.recent) || null;
+  // the seat detail (his newest tasks) arrives after the first status: look again a few times until it is there
+  clearTimeout(plaqueTimer);
+  if (!recent && mode === 'live' && RELAY && plaqueRetry < 8) { plaqueRetry++; plaqueTimer = setTimeout(() => plaqueFor(s), 3000); } else if (recent) plaqueRetry = 0;
+  if (!recent && live.swarm && live.swarm.events) recent = live.swarm.events.filter((e) => String(e.tokenId) === String(seatId) && (e.step || e.nodeKey || e.role))
+    .map((e) => ({ nodeKey: e.step || e.nodeKey || '', role: e.role || '', launch: e.launch || null, objective: e.objective || '' }));
+  const counts = {};
+  for (const t of (recent || []).slice(0, 20)) { const k = taskCategory(t) || 'other'; counts[k] = (counts[k] || 0) + 1; }
+  const ex = expertise(counts);
+  house.state.plaque = { rate, word: ex ? ex.word : null, job: ex ? ex.job : null, category: ex ? ex.category : null, demo: mode === 'demo' };
+  const key = `${seatId}|${rate}|${ex ? ex.category : ''}`;
+  if (mode === 'live' && key !== plaqueSaid) {
+    plaqueSaid = key;
+    addDiary(`The plaque on the tree: ${rate == null ? 'no tasks yet' : rate + ' % accepted'}${ex ? `, by trade a ${ex.job.toLowerCase()}: ${ex.word} are ${Math.round(ex.share * 100)} % of his newest tasks, ${ex.ratio >= 2 ? Math.round(ex.ratio) + ' x' : Math.round(ex.ratio * 10) / 10 + ' x'} the swarm's share` : ''}.`);
+  }
+}
+
+// the Sworn card over the fireplace (2026-10-26): the seat's owner (the /swarm owners list) and the card that wallet holds
+// (sworn.js, read-only); none for a wallet without one, and none in the demo. A tap on it: no link, he tells you it's his
+// onchain trophy and how proud he is (owner, 2026-10-26: "typical degen ironic humour").
+async function swornFor(id, asked) {
+  let owner = null;
+  try { const sw = live.swarm || await live.fetchSwarm(); owner = sw && sw.owners ? sw.owners[id] : null; } catch (e) { /* no swarm list */ }
+  if (house !== asked) return;
+  if (!owner) { house.state.sworn = null; return; }
+  let card = null;
+  try { card = await cardOf(owner); } catch (e) { /* the registry did not answer: no card shown */ }
+  if (house !== asked) return;
+  house.state.sworn = card;
+  if (card) addDiary(`A Sworn card hangs over the fireplace: his owner's, No. ${card.tokenId}, ${card.lit === 0 ? 'no fact lit yet' : card.lit === 1 ? 'one fact lit' : card.lit + ' facts lit'}.`);
+}
+function onSworn(e) {
+  if (!house || !house.state.sworn) return false;
+  const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) * 480 / r.width, y = (e.clientY - r.top) * 320 / r.height, f = SWORN_FRAME;
+  return x >= f.x && x <= f.x + f.w && y >= f.y - 2 && y <= f.y + f.h;
+}
+if (FEATURES.sworn) {
+  canvas.addEventListener('click', (e) => {
+    if (!onSworn(e)) return;
+    const line = trophyLine(house.state.sworn);
+    house.event({ type: 'flash', icon: 'heart' });
+    talkReply(line);
+    addDiary(`You tapped the card over the fireplace. He: ${line}`);
+  });
+  canvas.addEventListener('mousemove', (e) => { if (onSworn(e)) canvas.style.cursor = 'pointer'; });
+}
+
+// IMD or swarm news (2026-10-26): the issue loads while he fetches the paper; when he starts reading he gives the headline.
+// A click on him while he reads (state.action 'news') opens the issue page by page (news.js).
+function newsTalk(cmd, grumble) {
+  if (!FEATURES.news) return talkSay(cmd, 'No paper in this house.');
+  const asked = house;
+  const pending = latestIssue().then((i) => i, (e) => ({ error: (e && e.message) || String(e) }));
+  pending.then((i) => { if (house === asked && i && !i.error) { newsIssue = i; house.state.news = paperLines(i); } });   // the sheet's print, as soon as it is known
+  talkReply(NEWS.fetching, false);
+  let said = false;
+  const finish = async () => {                           // once: when he starts reading, or after 20 s if something cut his walk short
+    if (said) return; said = true;
+    const i = await pending;
+    if (house !== asked) return;
+    if (!i || i.error) { newsIssue = null; return talkSay(cmd, NEWS.none + (i && i.error ? ` (${i.error})` : ''), { href: DAILY.site, label: 'The IMD Daily' }); }
+    newsIssue = i;
+    talkSay(cmd, issueLine(i) + grumble, { href: DAILY.site, label: 'The IMD Daily' });
+  };
+  setTimeout(finish, 20000);
+  house.event({ type: 'command', act: 'news', done: finish });
+}
+// the day's IMD Daily (owner, 2026-10-26): when a new issue is out (the collection's issueCount grew; read every 5 min and on
+// each visit, cached 10 min in daily.js), the mail carrier brings the paper to the mailbox, and he reads it when he is free.
+// What this browser has seen: lcp:daily:seen (the newest issue id delivered here), so each issue comes once.
+const DAILY_POLL_MS = 5 * 60000;
+let dailyPending = null, dailyTimer = null;
+async function dailyWatch() {
+  if (!FEATURES.news || !house || mode !== 'live') return;
+  let issue = null;
+  try { issue = await latestIssue(); } catch (e) { return; }
+  if (!issue || !house) return;
+  const seen = Number(store('lcp:daily:seen') || 0);
+  if (issue.id <= seen || dailyPending) return;
+  dailyPending = issue;
+  house.event({ type: 'daily' });
+}
+function onPaper() {
+  const issue = dailyPending; dailyPending = null;
+  if (!issue || !house) return;
+  store('lcp:daily:seen', issue.id);
+  newsIssue = issue; house.state.news = paperLines(issue);
+  addDiary(`The mail carrier brings ${issue.isToday ? 'today\'s' : 'the new'} IMD Daily, No. ${issue.id}: "${issue.title}".`);
+  const s = house.state;
+  if (s.working || s.asleep || s.away || house.walkout) { addDiary('The paper waits in the mailbox until he has a minute.'); return; }
+  house.event({ type: 'command', act: 'news', done: () => { talkReply(issueLine(issue)); addDiary(`He reads it. ${issueLine(issue)}`); } });
+}
+if (FEATURES.news) { setTimeout(dailyWatch, 8000); dailyTimer = setInterval(dailyWatch, DAILY_POLL_MS); }
+
+// a click on him while he reads: in the armchair the paper's rectangle (THINGS.chair, the sheet past it), else around his sprite
+function onReader(e) {
+  if (!house || house.state.action !== 'news' || house.man.hidden) return false;
+  const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) * 480 / r.width, y = (e.clientY - r.top) * 320 / r.height, m = house.man;
+  if (m.pose === 'tvsit') { const c = THINGS.chair; return x >= c.x - 14 && x <= c.x + c.w + 14 && y >= c.y - 29 && y <= c.y + c.h; }
+  return x >= m.x - 11 && x <= m.x + 11 && y >= m.y - 34 && y <= m.y + 2;
+}
+if (FEATURES.news) {
+  canvas.addEventListener('click', async (e) => {
+    if (!onReader(e)) return;
+    let i = newsIssue;
+    if (!i) { try { i = await latestIssue(); newsIssue = i; house.state.news = paperLines(i); } catch (err) { addDiary(`Can't fetch The IMD Daily right now (${err.message || err}).`); return; } }
+    news.open(i);
+    addDiary(`You read ${i.title} over his shoulder.`);
+  });
+  canvas.addEventListener('mousemove', (e) => { if (onReader(e)) canvas.style.cursor = 'pointer'; });
 }
 
 // yes or no to the question he asked last (within two minutes): the burn tracker's contract on Etherscan. The new tab
@@ -1168,9 +1463,13 @@ window.addEventListener('hashchange', route);
 
 applyTheme(theme.id);
 route();
+if (FEATURES.radio) { radio.armAutostart(); radioChanged(radio); }   // a wanted radio starts at the first click or key
 requestAnimationFrame(frame);
 window.__house = () => house;   // for local testing in the console
 window.__live = live;
 window.__theme = () => theme;
 window.__demo = demo;
 window.__follower = follower;
+window.__radio = radio;
+window.__news = () => ({ issue: newsIssue, reader: news });
+window.__stationFeed = stationFeed;

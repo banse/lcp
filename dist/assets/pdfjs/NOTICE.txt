@@ -1,0 +1,2 @@
+pdf.js 5.4.530 (pdfjs-dist legacy build, Apache-2.0, https://github.com/mozilla/pdf.js), vendored 2026-10-26 for src/news.js:
+the swarm host allows scripts from the site itself only (script-src self). Files: pdf.min.mjs, pdf.worker.min.mjs, wasm/ (JPX and ICC decoders).

@@ -373,7 +373,10 @@ function pepeSpec(m, s) {
     case 'piano': return { loop: [['walk1', 170], ['stand', 170], ['walk2', 170], ['stand', 170]] };
     case 'paint': return { loop: [['scratch1', 320], ['scratch2', 320], ['scratch1', 320], ['stand', 600]] };
     case 'fan': return { loop: [['scratch1', 110], ['scratch2', 110]] };
-    case 'dance': return { loop: [['cheer1', 260], ['cheer2', 240]] };
+    case 'dance': {                                              // to the radio he dances in its tempo (72..118 bpm)
+      const k = s && s.radio && s.radio.on && s.radio.bpm ? 120 / s.radio.bpm : 1;
+      return { loop: [['cheer1', Math.round(260 * k)], ['cheer2', Math.round(240 * k)]] };
+    }
     case 'exercise': return { loop: [['cheer1', 380], ['stand', 380]] };
     case 'stretch': return { base: 'cheer1' };
     case 'sad': return { base: 'front_scratch' };
@@ -401,6 +404,7 @@ function dogSpec(d) {
   if (d.pose === 'party') return { loop: [['wag', 150], ['wag2', 150], ['wag', 150], ['wag2', 150], ['bark', 260], ['sit_bark', 240], ['bow', 420], ['wag', 150], ['wag2', 150]] };
   if (d.pose === 'eat') return { loop: [['bow', 900], ['stand', 300]] };
   if (d.pose === 'sleep') return { base: 'sleep', moves: ['dglance'] };
+  if (d.pose === 'howl') return { loop: [['sit_bark', 420], ['sit', 180]] };       // a whale sold on the radio
   return d.mode === 'door' ? { base: 'sit' } : { base: 'head_up', moves: ['dlook', 'dtilt'] };
 }
 
@@ -493,11 +497,14 @@ function drawPepe(g, th, m, s, now) {
     return;
   }
   if (['tvsit', 'nap', 'sit'].includes(m.pose)) {             // in the armchair: his head over its back
-    const c = THINGS.chair, tilt = m.pose === 'nap' ? 0.28 : 0;
+    const c = THINGS.chair, tilt = m.pose === 'nap' ? 0.28 : 0, news = s.action === 'news';
+    if (news) bigPaper(g, c, now, s.news);                     // The IMD Daily unfolded in front of him, wider than he is: number, date, headline
     g.save(); g.translate(c.x + c.w / 2, c.y + 5); g.rotate(tilt);
-    const name = m.pose === 'nap' ? 'stand' : th.pm.frame('chair', { base: 'stand', moves: ['look'] }, now);
+    const name = m.pose === 'nap' ? 'stand' : news ? 'stand' : th.pm.frame('chair', { base: 'stand', moves: ['look'] }, now);
     g.drawImage(img, PI[name] * 240 + 30, 14, 180, 136, -PW * 0.375, -PH * 0.48, PW * 0.75, PH * 0.48); g.restore();
     armchair(g);
+    if (news) { const y = c.y - 4 + Math.sin(now / 700) * 0.3;  // his hands on the paper's edges, arms out past the chair
+      box(g, c.x - 9.5, y, 3.2, 2.6, '#5aa05a', 0.35); box(g, c.x + c.w + 6.3, y, 3.2, 2.6, '#5aa05a', 0.35); }
     return;
   }
   if (m.pose === 'walk') {
@@ -512,9 +519,74 @@ function drawPepe(g, th, m, s, now) {
 }
 
 function carried(g, what, x, y) {
+  if (what === 'paper') { g.save(); g.translate(x, y); g.rotate(-0.35); box(g, -4, -1.5, 8, 3, C.paper, 0.45); ln(g, -2.5, 0, 2.5, 0, 0.25, C.greyD); g.restore(); return; }   // The IMD Daily, folded
   if (what === 'letter') { box(g, x - 3.5, y - 2.5, 7, 5, C.paper, 0.5); ln(g, x - 3.5, y - 2.5, x, y, 0.35); ln(g, x + 3.5, y - 2.5, x, y, 0.35); }
   else if (what === 'frame') { box(g, x - 4, y - 4, 8, 7, C.paper, 0.6); box(g, x - 2.5, y - 2.5, 5, 4, C.glass, 0); ln(g, x - 2, y, x + 2, y - 1, 0.4, C.green); }
   else if (what === 'parcel') { box(g, x - 5, y - 6, 10, 8, C.paper2, 0.6); box(g, x - 0.7, y - 6, 1.4, 8, C.amber, 0); }
+}
+
+// the unfolded paper seen from behind (he sits in the armchair, 2026-10-26): a wide sheet past his shoulders and over his
+// head, the fold in the middle, the print showing through faintly; news.js opens the real issue on a click
+// the plaque on the tree (mapping.js expertise; main.js plaqueFor): a small sign nailed to the trunk, the acceptance rate
+// on top, his thing underneath (owner, 2026-10-26)
+export const PLAQUE_BOX = { x: 451, y: 255, w: 24, h: 13 };
+function treePlaque(g, p) {
+  const b = PLAQUE_BOX;
+  rbox(g, b.x, b.y, b.w, b.h, 0.8, C.wall, 0.6);                                   // light grey, lighter than the first try (owner, 2026-10-26)
+  disc(g, b.x + b.w / 2, b.y + 1.3, 0.5, C.ink, 0);
+  text(g, p.rate == null ? '–' : p.rate + '%', b.x + b.w / 2, b.y + 7, 5, C.ink, 700, 'center');
+  if (p.job) text(g, p.job, b.x + b.w / 2, b.y + 11.4, 3.2, C.greyD, 600, 'center');   // his trade, not the kind of job
+}
+
+export const SWORN_FRAME = { x: 314, y: 219, w: 16, h: 16 };            // the hive's box on the wall (no frame, owner 2026-10-26)
+function hexPath(g, cx, cy, r) {
+  g.beginPath();
+  for (let i = 0; i < 6; i++) { const t = i * Math.PI / 3; g.lineTo(cx + Math.cos(t) * r, cy + Math.sin(t) * r); }
+  g.closePath();
+}
+function swornCard(g, card, now) {
+  const f = SWORN_FRAME, k = f.w / 1000, ox = f.x, oy = f.y + 0.3;
+  hexPath(g, ox + 500 * k, oy + 480 * k, 440 * k); g.fillStyle = C.paper; g.fill(); g.lineWidth = 0.35; g.strokeStyle = C.greyM; g.stroke();   // the outer ring is the card's edge
+  for (const c of card.cells) {
+    const cx = ox + c.x * k, cy = oy + c.y * k, r = 89 * k;
+    if (c.level > 0) {
+      const frac = c.level / c.tiers, inner = 77 * k, h = 2 * inner * 0.866;
+      g.save(); hexPath(g, cx, cy, inner); g.clip();
+      g.fillStyle = C.grey; g.fillRect(cx - inner, cy + h / 2 - h * frac, inner * 2, h * frac);
+      g.restore();
+    }
+    hexPath(g, cx, cy, r); g.lineWidth = c.level > 0 ? 0.4 : 0.25; g.strokeStyle = c.level > 0 ? C.ink : C.greyM; g.stroke();
+  }
+}
+
+function bigPaper(g, c, now, news) {
+  const w = c.w + 26, h = 30, x = c.x - 13, y = c.y - 27 + Math.sin(now / 700) * 0.3;
+  g.save(); g.translate(x + w / 2, y + h); g.rotate(Math.sin(now / 1900) * 0.012); g.translate(-(x + w / 2), -(y + h));
+  rbox(g, x, y, w, h, 0.5, C.paper, 0.55);
+  // the sheet's print (owner, 2026-10-26: number, date and headline on the paper): masthead, the issue line, the headline
+  text(g, 'The IMD Daily', x + w / 2, y + 4.6, 4.2, C.ink, 700, 'center');
+  ln(g, x + 2, y + 5.8, x + w - 2, y + 5.8, 0.3, C.ink);
+  if (news) {
+    text(g, `No. ${news.no} · ${news.date}`, x + w / 2, y + 8.6, 2.5, C.greyD, 600, 'center');
+    const words = String(news.headline || '').split(' '), lines = [], max = Math.floor((w - 4) / (3 * 0.56));
+    let cur = '';
+    for (const wd of words) { if ((cur + ' ' + wd).trim().length > max && cur) { lines.push(cur); cur = wd; } else cur = (cur + ' ' + wd).trim(); if (lines.length === 3) break; }
+    if (cur && lines.length < 3) lines.push(cur);
+    lines.forEach((l, i) => text(g, l, x + 2, y + 13 + i * 3.6, 3, C.ink, 700, 'left'));
+    const from = y + 13 + lines.length * 3.6;
+    for (let yy = from + 1; yy < y + h - 1.4; yy += 2.2) { ln(g, x + 2, yy, x + w / 2 - 1.2, yy, 0.22, '#cfcfca'); ln(g, x + w / 2 + 1.2, yy, x + w - 2, yy, 0.22, '#cfcfca'); }
+  } else for (let yy = y + 9; yy < y + h - 1.4; yy += 2.6) ln(g, x + 2, yy, x + w - 2, yy, 0.22, '#d9d9d4');
+  g.restore();
+}
+
+// the broadsheet held standing (not used since he sits for it, 2026-10-26; kept): masthead, two columns, a picture
+function newspaper(g, x, y, now) {
+  const w = 17, h = 12, px = x - w / 2, py = y - 21 + Math.sin(now / 900) * 0.3;
+  rbox(g, px, py, w, h, 0.4, C.paper, 0.5);
+  ln(g, px + w / 2, py + 3.2, px + w / 2, py + h - 1, 0.25, C.greyM);
+  box(g, px + 1.2, py + 1.1, w - 2.4, 1.4, C.ink, 0);
+  for (let i = 0; i < 5; i++) { ln(g, px + 1.4, py + 4.2 + i * 1.5, px + w / 2 - 0.8, py + 4.2 + i * 1.5, 0.25, C.greyD); ln(g, px + w / 2 + 0.8, py + 4.2 + i * 1.5, px + w - 1.4, py + 4.2 + i * 1.5, 0.25, C.greyD); }
+  box(g, px + w / 2 + 0.8, py + 7.4, w / 2 - 2.2, 3.4, C.greyL, 0.3);
 }
 
 function drawDog(g, th, d, now) {
@@ -546,6 +618,7 @@ function drawCarrier(g, c) {                                    // the mail carr
   rbox(g, -9, -18, 6, 8, 1, C.paper2, 0.6);
   if (c.carry === 'letter') { box(g, 4, -19, 6, 4, C.paper, 0.4); }
   if (c.carry === 'parcel') { box(g, 3, -22, 9, 8, C.paper2, 0.5); box(g, 6.8, -22, 1.4, 8, C.amber, 0); }
+  if (c.carry === 'paper') { g.save(); g.translate(7, -19); g.rotate(-0.35); box(g, -4, -1.5, 8, 3, C.paper, 0.45); ln(g, -2.5, 0, 2.5, 0, 0.25, C.greyD); g.restore(); }   // The IMD Daily, folded
   g.restore();
 }
 
@@ -670,7 +743,8 @@ function props(g, s, now, tick) {
   // oscilloscope in the music room
   const sp = THINGS.scope;
   box(g, sp.x + 2, sp.y + 2, 17, sp.h - 4, C.glass, 0);
-  wave(g, sp.x + 2, sp.y + 2, 17, sp.h - 4, now, ['piano', 'records', 'dance'].includes(a) ? 3.2 : 0.5, ['piano', 'records'].includes(a) ? 70 : 400);
+  const onAir = !!(s.radio && s.radio.on), drone = onAir && s.radio.stage >= 3, musical = onAir || ['piano', 'records', 'dance'].includes(a);
+  wave(g, sp.x + 2, sp.y + 2, 17, sp.h - 4, now, musical ? (drone ? 1.2 : 3.2) : 0.5, musical ? (drone ? 260 : 70) : 400);
   // TV
   const tv = THINGS.tv, tx = tv.x + 3, ty = tv.y + 3, tw = tv.w - 11, thh = tv.h - 6;
   if (s.tvStatic) {
@@ -719,7 +793,29 @@ function props(g, s, now, tick) {
   if (a !== 'phone') rbox(g, 275 + shake, 269.6, 12, 2.2, 1, C.ink, 0);
   if (s.phoneRinging && (tick >> 3) % 2) { ln(g, 272, 268, 270, 265, 0.6); ln(g, 290, 268, 292, 265, 0.6); ln(g, 281, 266, 281, 263, 0.6); }
   // record spinning, fridge open, pot, shower curtain, watering
-  if (a === 'records') { const r = now / 200; ln(g, 277, 188.6, 277 + Math.cos(r) * 7, 188.6 + Math.sin(r) * 1.4, 0.5, C.paper); }
+  if (a === 'records' || onAir) {                                 // the record turns, to the radio in its tempo
+    const r = now / (200 * (onAir && s.radio.bpm ? 120 / s.radio.bpm : 1));
+    ln(g, 277, 188.6, 277 + Math.cos(r) * 7, 188.6 + Math.sin(r) * 1.4, 0.5, C.paper);
+  }
+  // the radio (radio.js): the stations as record sleeves in the cabinet's right half, the one playing pulled up; a note
+  // rises over the player at a trade in its pool; finished $IDM tracks hang as records beside the pictures
+  if (s.radio) {
+    (s.radio.sleeves || []).forEach((r, i) => {
+      const up = r.current && onAir ? 2 : 0, x = 280.4 + i * 2.6;
+      box(g, x, 194.5 - up, 2, 10.5 + up, r.color, 0.3);
+      if (r.current) box(g, x, 194.5 - up, 2, 1, C.paper, 0);
+    });
+    if (s.radioNote > 0) {
+      const k = 1 - s.radioNote / 42;
+      g.save(); g.globalAlpha = 1 - k;
+      text(g, '♪', 277 + Math.sin(k * 9) * 1.5, 183 - k * 9, 5.5, C.paper, 600, 'center');
+      g.restore();
+    }
+    for (let i = 0; i < Math.min(3, s.radio.tracks || 0); i++) {
+      disc(g, THINGS.frames.x + 33, THINGS.frames.y + 4 + i * 9, 3, C.ink, 0.5);
+      disc(g, THINGS.frames.x + 33, THINGS.frames.y + 4 + i * 9, 0.9, C.paper, 0);
+    }
+  }
   if (a === 'snack') { const fr = THINGS.fridge; box(g, fr.x + 1, fr.y + 21, fr.w - 2, fr.h - 22, '#eef6f2', 0.4); box(g, fr.x - 12, fr.y + 20, 12, fr.h - 20, C.paper, 0.6); ln(g, fr.x + 1, fr.y + 38, fr.x + fr.w - 1, fr.y + 38, 0.4); disc(g, fr.x + 8, fr.y + 34, 2.5, C.amber, 0.4); box(g, fr.x + 16, fr.y + 30, 6, 8, C.red, 0.4); }
   if (a === 'cook') {
     const st = THINGS.stove; rbox(g, st.x + 6, st.y - 8, 12, 6, [0, 0, 2, 2], C.ink, 0);
@@ -735,6 +831,8 @@ function props(g, s, now, tick) {
   if (a === 'water') for (let i = 0; i < 3; i++) box(g, 382 - i * 2, 186 + ((now / 40 + i * 5) % 10), 0.6, 1.6, C.blue, 0);
   // mailbox and its flag, the parcel, the front door, the sign
   rbox(g, 14, 264, 20, 11, [5, 5, 0, 0], C.paper, 0.7); ln(g, 18, 268, 30, 268, 0.6);
+  if (s.seatNo != null) text(g, '#' + s.seatNo, 24, 273.4, 3.6, C.ink, 700, 'center');                  // the house number (owner, 2026-10-26)
+  if (s.paper) { g.save(); g.translate(30, 262.6); g.rotate(-0.55); rbox(g, -6, -1.6, 12, 3.2, 0.6, C.paper2, 0.5); ln(g, -4, 0, 4, 0, 0.3, C.greyD); g.restore(); }   // the day's Daily, rolled in the slot
   if (s.mailbox > 0 || s.outgoing) { box(g, 34, 256, 1.6, 10, C.ink, 0); box(g, 35.6, 256, 5, 3.4, C.red, 0.4); } else box(g, 34, 266, 8, 1.6, C.greyD, 0);
   if (s.parcel) { box(g, 40, 288, 12, 10, C.paper2, 0.6); box(g, 45.3, 288, 1.4, 10, C.amber, 0); ln(g, 40, 291, 52, 291, 0.3); }
   if (s.doorOpen) { box(g, 56, 252, 4, 38, C.page, 0); box(g, 46, 252, 10, 38, C.paper, 0.6); disc(g, 48, 271, 0.8, C.ink, 0); }
@@ -808,6 +906,10 @@ function props(g, s, now, tick) {
     disc(g, 299 + j, 229.4, 1.3, C.amber, 0.4); disc(g, 305 + j, 229.4, 1.3, C.amber, 0.4);
     for (const [x0, y0, x1, y1] of [[295, 228, 293, 226], [309, 228, 311, 226], [295, 238, 293, 240], [309, 238, 311, 240]]) ln(g, x0, y0, x1, y1, 0.5);
   }
+  // the Sworn card over the fireplace (sworn.js; main.js sets s.sworn for a seat whose owner holds one): the real card's
+  // hive in the house's greys, each family cell filled to the tier the wallet holds (owner, 2026-10-26)
+  if (s.sworn) swornCard(g, s.sworn, now);
+  if (s.plaque) treePlaque(g, s.plaque);
   // the easel's picture grows while he paints
   const e = THINGS.easel;
   if (a === 'paint') {
@@ -918,6 +1020,8 @@ function bigFireworks(g, now, day) {
 }
 
 function lights(g, s, phase) {
+  // an hour without a trade on the radio: the music room dims with the drone
+  if (s.radio && s.radio.on && s.radio.stage >= 3 && !s.asleep && !s.away && !s.party) { g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(200, 134, 148, 74); }
   if ((!s.asleep && !s.away) || s.party) return;        // a party keeps the lights on
   g.fillStyle = phase === 'night' || phase === 'dusk' ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0.38)';
   g.fillRect(56, 48, 388, 242);

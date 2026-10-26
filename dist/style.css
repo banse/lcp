@@ -111,6 +111,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .door { background: var(--wood-l); color: var(--paper-ink); }
 
 .below { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.below:has(.side[hidden]) { grid-template-columns: 1fr; }     /* the counters switched off: the diary takes the row */
 @media (max-width: 720px) { .below { grid-template-columns: 1fr; } }
 .diary ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 360px; overflow: auto; }
 .diary li { display: grid; grid-template-columns: 3.4rem 1fr; gap: 8px; }
@@ -287,3 +288,25 @@ html[data-look="imd"] .letter button, html[data-look="imd"] .knock button, html[
   body.with-pane, html[data-look] body.with-pane { padding-right: calc(min(44vw, 820px) + 24px); }   /* over the look's gutter */
   .side-pane { position: fixed; top: 0; right: 0; bottom: 0; z-index: 5; width: min(44vw, 820px); height: auto; min-height: 0; border-width: 0 0 0 2px; }
 }
+
+/* the radio (2026-10-25): the line under the command line names the station and theidm.fun; the frame of their stream
+   page is audio only and stays out of the layout (hidden by size and opacity, not display: none, so it keeps playing) */
+.radio-line { margin: -6px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--muted); font-size: 0.95rem; }
+.radio-line b { color: var(--ink); font-weight: 600; }
+.radio-line a { color: var(--lamp); }
+.radio-line .quiet { margin-left: auto; }
+#radio { position: fixed; left: 0; bottom: 0; width: 0; height: 0; }   /* out of the page grid: no empty row between his reply and the diary (owner, 2026-10-26) */
+.radio-frame { position: fixed; left: 0; bottom: 0; width: 2px; height: 2px; border: 0; opacity: 0.01; pointer-events: none; }
+/* the light / dark switch shows its icon only (owner, 2026-10-25); the mode's name stays for screen readers */
+.mode-btn span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.mode-btn { position: relative; }
+
+/* The IMD Daily in the house (2026-10-26): the issue's pages in the popup over the house */
+#news-pop { position: fixed; z-index: 20; }                /* the reader covers the page, not just the house: a page needs the height */
+.letter-pop .news-card { width: min(760px, 100%); max-height: calc(100vh - 24px); }
+.news-stage { position: relative; display: grid; justify-content: center; background: #e9e6dc; border: 1.5px solid var(--paper-ink); min-height: 220px; touch-action: pan-y; overflow: hidden; }
+#news-page { display: block; height: auto; max-width: 100%; background: #ffffff; }
+.news-msg { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 12px; text-align: center; color: var(--paper-ink); background: rgba(255, 255, 255, 0.85); }
+.news-msg:empty { display: none; }
+.news-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.news-nav span { color: var(--paper-ink); font-size: 0.9rem; }

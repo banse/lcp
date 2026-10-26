@@ -44,3 +44,29 @@ export const MAPPINGS = {
 
 export const ACTIVITIES = ['computer', 'cook', 'book', 'tv', 'piano', 'easel', 'telescope', 'magnifier', 'lab', 'workbench',
   'typewriter', 'pinball', 'whiteboard', 'cabinet'];
+
+// The plaque on the tree (owner, 2026-10-26: "a small house plaque with the acceptance rate and what his expertise is,
+// the jobs he does more compared to other agents"). His expertise is the category where his share of his newest tasks
+// exceeds the swarm's share the most (at least two tasks of it); the swarm's share is SWARM_MIX, measured 2026-10-26
+// 01:55 UTC over the 20 newest tasks of the 160 seats with the most attempts (3,200 tasks, through the local relay).
+export const SWARM_MIX = { oracle: 0.562, review: 0.215, other: 0.076, assemble: 0.032, image: 0.032, website: 0.032, tests: 0.029,
+  token: 0.017, research: 0.004, video: 0.002, audio: 0.002, docs: 0.002, fuzz: 0.002, planning: 0.002, indexer: 0.002 };
+// the trade on the plaque (owner, 2026-10-26: not the kind of job, the profession it makes him)
+export const PLAQUE_JOB = { token: 'Tokensmith', website: 'Webmaster', other: 'Handyman', research: 'Researcher', video: 'Filmmaker', audio: 'Musician',
+  image: 'Illustrator', oracle: 'Seer', review: 'Auditor', tests: 'Tester', assemble: 'Mechanic', docs: 'Scribe', fuzz: 'Fuzzer',
+  planning: 'Planner', indexer: 'Archivist' };
+export const PLAQUE_WORD = { token: 'tokens', website: 'sites', other: 'odd jobs', research: 'research', video: 'video', audio: 'audio',
+  image: 'images', oracle: 'oracles', review: 'audits', tests: 'tests', assemble: 'fixing', docs: 'docs', fuzz: 'fuzzing',
+  planning: 'planning', indexer: 'indexers' };
+// counts: {category: n} of his newest tasks -> {category, word, n, share, ratio} or null (fewer than two of any kind)
+export function expertise(counts) {
+  const total = Object.values(counts || {}).reduce((a, b) => a + b, 0);
+  if (!total) return null;
+  let best = null;
+  for (const [k, n] of Object.entries(counts)) {
+    if (n < 2) continue;
+    const share = n / total, ratio = share / (SWARM_MIX[k] || 0.002);
+    if (!best || ratio > best.ratio || (ratio === best.ratio && n > best.n)) best = { category: k, word: PLAQUE_WORD[k] || k, job: PLAQUE_JOB[k] || k, n, share, ratio };
+  }
+  return best;
+}
