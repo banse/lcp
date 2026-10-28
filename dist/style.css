@@ -27,11 +27,12 @@ body {
   padding-block: 28px 48px;
 }
 .page { max-width: 1000px; margin: 0 auto; display: grid; gap: 20px; }
-.head { display: grid; gap: 6px; }
+.head { display: grid; gap: 6px; justify-items: center; text-align: center; }   /* centred (owner, 2026-10-27) */
 h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.6rem); font-weight: 600; line-height: 1.1; text-wrap: balance; }
 h1 .num { color: var(--lamp); }
 #lede { margin: 0; color: var(--muted); max-width: 62ch; }
 #lede.wide { max-width: none; white-space: pre-line; }   /* following a job (2026-10-26): two lines over the whole width */
+#lede .lede-job { color: var(--lamp); text-underline-offset: 3px; }   /* the followed job's id opens it in the column (2026-10-27) */
 h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; }
 
 .page > * { min-width: 0; }
@@ -51,6 +52,11 @@ h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; }
 .station-numbers dd { margin: 0; font-weight: 600; }
 /* his whiteboard large (2026-10-25): wider than a letter; the diagram scrolls sideways inside it on a phone */
 .letter-pop .board-card { width: min(760px, 100%); }
+.letter-pop .changelog-card { width: min(620px, 100%); max-height: calc(100vh - 24px); }
+.changelog-list h3 { margin: 14px 0 6px; font-size: 0.85rem; letter-spacing: 0.04em; }
+.changelog-list h3:first-child { margin-top: 0; }
+.changelog-list ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+.changelog-list li { line-height: 1.45; }
 .board-svg { overflow-x: auto; }
 .board-svg svg { display: block; width: 100%; min-width: 420px; height: auto; border: 1.5px solid var(--paper-ink); }
 .board-card pre { font-size: 0.8rem; }
@@ -69,12 +75,10 @@ html[data-look] .board-seats button[aria-current] { background: var(--paper-ink)
 }
 
 .controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; }
+.controls:not(:has(> :not([hidden]))) { display: none; }      /* the seat and job rows switched off (2026-10-27): no empty row */
 .seat-form, .toggles { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-/* one row (2026-10-25): the seat, the job, then the explorer buttons (IMD Explorer / Hide explorer, Random job in the
-   side-by-side page) at the right end; on narrow screens each part wraps onto its own line */
+/* one row (2026-10-25): the seat, then the job; on narrow screens each part wraps onto its own line */
 .seat-form { flex: 0 0 auto; }
-.split-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
-.split-actions:not(:has(button:not([hidden]))) { display: none; }
 /* following a job (2026-10-25): the list is 18rem at most, not as wide as its longest option, and shrinks first */
 .job-form { flex: 0 1 auto; min-width: 0; flex-wrap: nowrap; }
 .job-form button { white-space: nowrap; }
@@ -161,8 +165,19 @@ code { font-family: var(--type); font-size: 0.95em; }
 .legend-head h2 { margin: 0; }
 .quiet-ink { background: transparent; color: var(--paper-ink); border-color: var(--wood-l); }
 
-/* the header: the name on the left, the look and settings on the right (as imd.fun's top bar) */
-.topbar { max-width: 1000px; margin: 0 auto 26px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; }
+/* the header: the logo on the left, the name in the middle, the light / dark switch on the right (2026-10-27, owner: "only
+   the LCP on the left, the dark/light mode switch at the right, and the LITTLE COMPUTER PEPES in the middle"): three
+   columns, the name centred on the bar whatever the sides hold (the logo and the name sit in .brand-row, which steps
+   aside); narrower than 560px the name is centred between the two and wraps rather than widening the page */
+.topbar { max-width: 1000px; margin: 0 auto 26px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 12px 20px; align-items: center; }
+.topbar .brand-row { display: contents; }
+.topbar .menu-wrap { justify-self: start; }
+.topbar .brand { justify-self: center; text-align: center; }
+.topbar .toggles { justify-self: end; justify-content: flex-end; }
+@media (max-width: 560px) {
+  .topbar { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .topbar .brand { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+}
 .brand { font-weight: 600; font-size: 1.15rem; color: var(--ink); text-decoration: none; padding: 6px 12px; border: 2px solid var(--wood-l); }
 .brand:hover { color: var(--lamp); }
 .brand:focus-visible { outline: 3px solid var(--lamp); outline-offset: 2px; }
@@ -173,14 +188,43 @@ code { font-family: var(--type); font-size: 0.95em; }
   color: var(--ink); text-decoration: none; transition: background-color 0.2s; }
 .logo:hover { background: color-mix(in srgb, var(--ink) 14%, var(--night)); }
 .logo:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
-.logo-mark { display: flex; align-items: center; justify-content: center; width: calc(40px - 1.5px);
+.logo-mark { display: flex; align-self: stretch; align-items: center; justify-content: center; width: calc(40px - 1.5px);
   border-right: 1.5px solid var(--ink); perspective: 60px; }
+/* align-self (2026-10-28, owner: the rule between the frog and LCP should look like the explorer's IMD button): the IMD look's
+   `.topbar button { align-items: center }` shrank the frog's cell (a button) to its 19 px icon, and its rule with it */
 .logo-mark svg { display: block; }
 .logo:hover .logo-mark svg, .logo:focus-visible .logo-mark svg { animation: 2.4s linear infinite globe; }
 .logo-label { display: flex; align-items: center; font-size: 13px; font-weight: 600; letter-spacing: 0.3em;
   padding: 0 calc(16px - 0.3em) 0 16px; }
 @keyframes globe { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
+/* a name's faint lead in the column's head (2026-10-28): 0x's "0", barely visible on either ground */
+.name-faint { opacity: 0.2; }
+/* the IMD logo on the right (2026-10-28): the explorer's IMD button as it is, the diamond first, no mirror */
+/* a phone: the two marks alone (as in full screen), so the name in the middle keeps its room */
+@media (max-width: 520px) { .topbar .logo .logo-label { display: none; } .topbar .logo .logo-mark { border: 0; } }
 @media (prefers-reduced-motion: reduce) { .logo:hover .logo-mark svg, .logo:focus-visible .logo-mark svg { animation: none; } }
+
+/* the frog's menu (2026-10-27, src/menu.js): the logo is its button and keeps its look (none of the bar's button rules);
+   the menu drops under it in the panel's own look: the page's ground, a rule round it, one row per entry with its state at
+   the right end, the link to the original last. Open, the frog looks as on hover */
+.menu-wrap { position: relative; min-width: 0; }
+html[data-look] .topbar .logo { height: 40px; padding: 0; border: 1.5px solid var(--ink); border-radius: 0; background: var(--night); color: var(--ink);
+  font: inherit; letter-spacing: normal; text-transform: none; filter: none; }
+html[data-look] .topbar .logo:hover, html[data-look] .topbar .logo[aria-expanded="true"] { background: color-mix(in srgb, var(--ink) 14%, var(--night)); }
+html[data-look] .topbar .logo .logo-label { letter-spacing: 0.3em; }
+.menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: min(19rem, calc(100vw - 32px)); padding: 6px 0;
+  background: var(--night); color: var(--ink); border: 1.5px solid var(--ink); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); }
+html[data-look] .topbar .menu .menu-item { display: flex; align-items: center; gap: 12px; width: 100%; height: auto; min-height: 44px; margin: 0;
+  padding: 6px 14px; border: 0; border-radius: 0; background: transparent; color: var(--ink); text-align: left; text-decoration: none;
+  font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; filter: none; }
+html[data-look] .topbar .menu .menu-item:hover { background: var(--hover-bg, var(--night-2)); }
+html[data-look] .topbar .menu .menu-item:focus-visible { outline: 2px solid var(--lamp); outline-offset: -3px; }
+.menu-item svg { flex: none; }
+.menu-label { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
+.menu-sub { color: var(--muted); font-size: 10.5px; letter-spacing: 0.02em; text-transform: none; font-weight: 400; overflow-wrap: anywhere; }
+.menu-state { flex: none; min-width: 2.6em; text-align: right; color: var(--muted); }
+.menu-item[aria-checked="true"] .menu-state { color: var(--lamp); font-weight: 600; }
+.menu-rule { height: 1.5px; margin: 6px 0; background: var(--wood-l); }
 .diary-col h2, .counters h2 { min-height: 1.4em; }
 .looks { display: inline-flex; gap: 0; }
 .looks button + button { border-left-width: 0; }
@@ -205,8 +249,8 @@ html[data-look="imd"] {
   --pixel: "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --type: "IBM Plex Mono", ui-monospace, Menlo, monospace;
 }
-/* The IMD look in light mode (2026-10-24), like explorer.imd.fun's light mode: the side-by-side page sends the
-   explorer's mode (main.js, setMode). Only the page around the house changes; the house keeps its own sky. */
+/* The IMD look in light mode (2026-10-24), like explorer.imd.fun's light mode: the switch in the top bar (main.js,
+   setMode; the column's list follows it). Only the page around the house changes; the house keeps its own sky. */
 html[data-look="imd"][data-mode="light"] {
   --night: #ffffff;
   --night-2: #f4f4f2;
@@ -263,12 +307,27 @@ html[data-look="imd"] .topbar button { padding: 0 14px; font-size: 12px; font-we
   html[data-look="imd"] .topbar .toggles { gap: 10px; }
   html[data-look="imd"] .topbar button { padding: 0 12px; font-size: 10.5px; }
 }
+@media (max-width: 480px) {                                    /* a phone: the name a size down, on two lines where it must */
+  html[data-look="imd"] .brand { height: auto; min-height: 40px; padding: 4px 10px; font-size: 11px; letter-spacing: 0.16em; line-height: 1.3; }
+}
 html[data-look="imd"] .diary { background: var(--term); border: 1.5px solid var(--term-edge); padding: 12px 14px; }
 html[data-look="imd"] .diary ol { font-size: 12.5px; }
 html[data-look="imd"] .talk-line { background: var(--term); border-color: var(--term-edge); height: 40px; }
 html[data-look="imd"] .talk-prompt { color: var(--lamp); }
 html[data-look="imd"] #talk-input { font-size: 13px; }
 html[data-look="imd"] .talk-reply { font-size: 12.5px; }
+/* in full screen, the talk line and his answer in the colour of the ground in front of the house (2026-10-28, owner: "adapt both
+   input and outputfields background colors to the color in front of the house", then "change the bg colors of text fields back in
+   non-fullscreen mode to how it was before, only in fullscreen use house colors"): themes/imd.js garden() paints it C.paper, by
+   day and by night; on it ink, a muted grey and the house's darker green (the light one is too faint on paper) */
+html[data-look="imd"] { --ground: #f4f4f2; --ground-ink: #0b0b0b; --ground-muted: #5c5c58; --ground-accent: #208030; --ground-edge: #bbbbb6; }
+html[data-look="imd"][data-full] .talk-line { background: var(--ground); border-color: var(--ground-edge); }
+html[data-look="imd"][data-full] .talk-line:focus-within { border-color: var(--ground-accent); }
+html[data-look="imd"][data-full] .talk-prompt { color: var(--ground-accent); }
+html[data-look="imd"][data-full] #talk-input { color: var(--ground-ink); caret-color: var(--ground-ink); }
+html[data-look="imd"][data-full] #talk-input::placeholder { color: var(--ground-muted); opacity: 1; }
+html[data-look="imd"][data-full] .talk-reply { background: var(--ground); color: var(--ground-ink); border: 1.5px solid var(--ground-edge); padding: 6px 12px; }
+html[data-look="imd"][data-full] .talk-reply .who, html[data-look="imd"][data-full] .talk-reply a { color: var(--ground-accent); }
 html[data-look="imd"] .diary li { grid-template-columns: 1rem 3.4rem 1fr; }
 html[data-look="imd"] .diary li::before { content: ">"; color: var(--lamp); }
 html[data-look="imd"] .diary li:first-child time, html[data-look="imd"] .diary li:first-child::before { color: var(--lamp); }
@@ -285,17 +344,71 @@ html[data-look="imd"] .legend td { border-bottom-color: #d6d6d2; }
 html[data-look="imd"] .small-ink { color: #5c5c58; }
 html[data-look="imd"] .letter button, html[data-look="imd"] .knock button, html[data-look="imd"] .legend button { color: var(--paper-ink); border-color: var(--paper-ink); }
 
-/* A chart or swap page beside him when the side-by-side page is not around (a hosted copy, or the house alone): under
-   the command line, or fixed on the right where the screen has room for both, the page centred in what is left */
-.side-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 75vh; min-height: 420px; border: 2px solid var(--wood-l); background: var(--night-2); }
-.pane-head { display: flex; align-items: center; gap: 14px; padding: 6px 10px; border-bottom: 2px solid var(--wood-l); }
-.pane-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pane-head a { color: var(--lamp); }
-.side-pane iframe { display: block; width: 100%; height: 100%; border: 0; background: #ffffff; }
-@media (min-width: 1500px) {
-  body.with-pane, html[data-look] body.with-pane { padding-right: calc(min(44vw, 820px) + 24px); }   /* over the look's gutter */
-  .side-pane { position: fixed; top: 0; right: 0; bottom: 0; z-index: 5; width: min(44vw, 820px); height: auto; min-height: 0; border-width: 0 0 0 2px; }
+/* The house's own column (own pane, 2026-10-26, src/column.js): the swarm's jobs and seats, or a page Pepe shows. From
+   900px wide it is fixed on the right at the grip's width (--column-w, 30-70 % of the window, set by column.js) and the
+   house is centred in what is left; narrower it follows the house in the page, full width, 80vh tall, with no grip.
+   Its border is the page's own colour, the panel's too (2026-10-27, owner: "color the border around the jobs etc panel in
+   the same color like the panel and the site"): no line shows, in light or dark; the grip keeps its bar. */
+.column { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); height: 80vh; min-height: 360px;
+  border: 1.5px solid var(--night); background: var(--night); }
+.column-head { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 4px 6px 4px 12px; border-bottom: 1.5px solid var(--wood-l); }
+.column-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.column-head a { color: var(--lamp); }
+html[data-look] .column-head button { height: 32px; padding: 0 10px; font-size: 11px; }
+html[data-look] .column-head .column-x { width: 32px; padding: 0; font-size: 18px; line-height: 1; letter-spacing: 0; text-transform: none; }
+.column-body { grid-row: 2; position: relative; min-height: 0; }      /* row 2 with or without the head */
+.column-body iframe { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border: 0; background: var(--night); }
+#column-page { background: #ffffff; }
+.column-grip { display: none; }
+.column.dragging iframe { pointer-events: none; }               /* the drag goes on over the frames */
+@media (min-width: 900px) {
+  body.with-column, html[data-look] body.with-column { padding-right: calc(var(--column-w, 44vw) + 24px); }   /* over the look's gutter */
+  .column { position: fixed; top: var(--column-top, 0px); right: 0; bottom: 0; z-index: 5; width: var(--column-w, 44vw); height: auto;
+    min-height: 0; border-width: 1.5px 0 0 1.5px; }
+  /* the page's header spans the house and the column (owner, 2026-10-26: "make the LCP header take all width above the two
+     panels"); the column starts under it (column.js sets --column-top) */
+  body.with-column .topbar { max-width: none; margin-right: calc(-1 * var(--column-w, 44vw) - 24px); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  html[data-look="imd"] body.with-column .topbar { padding-right: max(clamp(16px, 4vw, 34px), env(safe-area-inset-right, 0px)); }
+  .column-grip { display: block; position: absolute; top: 0; bottom: 0; left: -6px; width: 11px; z-index: 1; cursor: col-resize; touch-action: none; }
+  .column-grip::after { content: ""; position: absolute; top: 50%; left: 4px; width: 3px; height: 40px; margin-top: -20px; background: var(--wood-l); }
+  .column-grip:hover::after, .column-grip:focus-visible::after, .column.dragging .column-grip::after { background: var(--lamp); }
+  .column-grip:focus-visible { outline: none; }
+  .column.dragging, body:has(.column.dragging) { cursor: col-resize; user-select: none; }
 }
+
+/* The house in full screen (2026-10-27, src/full.js; owner: "add a "fullscreen mode" for the house, which isnt actually
+   fullscreen everytime, only when theres no panel right, except it takes the full panel screen, while jobs list etc. keeps
+   being visible"). html[data-full]: house (the column shut: the screen or the window), side (the column open on a wide
+   window: everything left of it, under the top bar), flow (the column open under the house: the page as it is). The title,
+   the lede, the diary and the rest of the page give way in all three; in house and side the house and the talk line are
+   fixed boxes main.js fitFull measures (--house-*, --talk-*), the talk line under the house, beside it, or over the ground
+   strip in front of it (data-place). The frog stays: the top bar's left end (side), or the screen's corner (house). */
+html[data-full] .head, html[data-full] .controls, html[data-full] .below, html[data-full] .knock, html[data-full] .radio-line { display: none !important; }
+html[data-full="house"] body, html[data-full="side"] body { overflow: hidden; }
+html[data-full="house"] body, html[data-look][data-full="house"] body { padding: 0; }
+html[data-full="house"] .topbar { margin: 0; }
+html[data-full="house"] .topbar .brand, html[data-full="house"] .topbar .toggles { display: none; }
+html[data-full="house"] .menu-wrap { position: fixed; top: 10px; left: 10px; z-index: 21; }
+/* full screen (2026-10-28, owner: "in full screen mode only show the actual logos left and right without the text"): the frog's and
+   IMD's marks alone, at the left and the right; no labels, no name. With the column shut the IMD mark floats in the right corner */
+html[data-full] .topbar .logo-label, html[data-full] .topbar .brand { display: none; }
+html[data-full] .topbar .logo .logo-mark { border: 0; }
+html[data-full="house"] .topbar .toggles { display: flex; position: fixed; top: 10px; right: 10px; z-index: 21; }
+html[data-full="house"] .stage, html[data-full="side"] .stage { position: fixed; left: var(--house-x); top: var(--house-y); width: var(--house-w); z-index: 1; }
+html[data-full="house"] .talk, html[data-full="side"] .talk { position: fixed; left: var(--talk-x); top: var(--talk-y); width: var(--talk-w); height: var(--talk-h);
+  z-index: 6; grid-template-rows: auto minmax(0, 1fr); align-content: start; }
+html[data-full] .talk[data-place] .talk-reply { min-height: 0; max-height: 100%; overflow: auto; overscroll-behavior: contain; }
+/* no room beside or under the house: the line and his reply side by side on the ground strip, under his rooms, readable
+   on the paper in either mode (their own ground and an ink rule round each); the house's popups end above it */
+html[data-full] .talk[data-place="over"] { display: flex; gap: 6px; align-items: stretch; }
+html[data-full] .talk[data-place="over"] .talk-line { flex: 0 0 46%; height: 100%; min-height: 0; padding: 0 8px; background: var(--ground, var(--night)); border: 1.5px solid var(--ground-edge, var(--ink)); }
+html[data-full] .talk[data-place="over"] .talk-line:focus-within { border-color: var(--ground-accent, var(--lamp)); }
+html[data-full] .talk[data-place="over"] #talk-input { padding: 0; }
+html[data-full] .talk[data-place="over"] .talk-reply { flex: 1 1 0; min-width: 0; height: 100%; margin: 0; padding: 2px 8px; background: var(--ground, var(--night));
+  border: 1.5px solid var(--ground-edge, var(--ink)); font-size: 12px; line-height: 1.4; }
+html[data-full] .talk[data-place="over"] .talk-reply:empty { display: none; }
+html[data-full] .letter-pop { padding-bottom: calc(12px + var(--strip-h, 0px)); }
+html[data-full] #news-pop { padding-bottom: 12px; }
 
 /* the radio (2026-10-25): the line under the command line names the station and theidm.fun; the frame of their stream
    page is audio only and stays out of the layout (hidden by size and opacity, not display: none, so it keeps playing) */

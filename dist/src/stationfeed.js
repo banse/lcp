@@ -82,22 +82,31 @@ export function decodeGrid(result) {
   };
 }
 
+// one JSON-RPC call through a station's endpoints, the next one when a call fails
+async function rpcCall(urls, fetchFn, method, params) {
+  let err = null;
+  for (const url of urls) {
+    try {
+      const r = await fetchFn(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      if (j.error) throw new Error(j.error.message || 'rpc error');
+      return j.result;
+    } catch (e) { err = e; }
+  }
+  throw err || new Error('no rpc');
+}
+
+// a hooked station's grid once, without a feed (main.js: the panel over the piano while a station without a hook
+// plays); null when every endpoint fails
+export async function readGrid(st, fetchFn = (...a) => fetch(...a)) {
+  try { return decodeGrid(await rpcCall(st.rpc, fetchFn, 'eth_call', [{ to: st.pool.hook, data: RAW_SELECTOR }, 'latest'])); } catch (e) { return null; }
+}
+
 export class StationFeed {
   constructor(onEvent, fetchFn = (...a) => fetch(...a)) { this.onEvent = onEvent; this.fetch = fetchFn; this.st = null; this.timer = null; this.gen = 0; }
 
-  async rpc(method, params) {
-    let err = null;
-    for (const url of this.st.rpc) {
-      try {
-        const r = await this.fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const j = await r.json();
-        if (j.error) throw new Error(j.error.message || 'rpc error');
-        return j.result;
-      } catch (e) { err = e; }
-    }
-    throw err || new Error('no rpc');
-  }
+  rpc(method, params) { return rpcCall(this.st.rpc, this.fetch, method, params); }
 
   logs(from, to, address, topics) { return this.rpc('eth_getLogs', [{ fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16), address, topics }]); }
   swapFilter() { const p = this.st.pool; return p.kind === 'v4' ? [TOPIC.swapV4, p.id] : [TOPIC.swapV3]; }

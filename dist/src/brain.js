@@ -22,7 +22,10 @@ export class House {
       mailbox: 0, mailDue: 0, parcelDue: false, outgoing: 0, tvStatic: false, frames: 0, doorOpen: false, parcel: false,
       needsUpdate: false, installProgress: 0, atStation: null, fireworks: 0, bigFireworks: 0, alarm: 0, machine: null,
       chart: null, chartHold: 0, buying: null, radio: null, radioNote: 0, radioHowl: 0,   // radio: main.js (radio.js houseState)
-      paper: false, paperDue: false, seatNo: null };                                         // the day's IMD Daily in the mailbox; the number on it
+      paper: false, paperDue: false, seatNo: null,                                           // the day's IMD Daily in the mailbox; the number on it
+      // the showcase (2026-10-28, main.js showcase): the video on the TV, the site on the machine's screen, the picture on the
+      // easel, the burn box at the door, the fire's flare and the chimney's burst, the plane with its banner
+      tvVideo: null, siteShow: null, easelArt: null, burnbox: false, burnboxDue: false, fireBoost: 0, chimneyBurst: 0, plane: null };
     this.pace = 1;               // walking speed, 1 = his usual (buying IMD makes him run, a lost trade makes him drag)
     this.flash = null;           // {icon, left}: a quick reaction over his head (talking to him while he works)
     this.walkout = false;        // he left with the dog because he was asked too much (talk.js)
@@ -131,6 +134,8 @@ export class House {
       case 'radio': this.radioEvent(e); break;
       // a new issue of The IMD Daily (main.js dailyWatch): the mail carrier brings the paper to the mailbox
       case 'daily': if (!s.paper && !(this.carrier && this.carrier.kind === 'paper')) s.paperDue = true; break;
+      // what the swarm just made or what happened on chain (main.js showcase, 2026-10-28): acted out one at a time
+      case 'show': this.showEvent(e); break;
       case 'workdone': s.working = false; break;
       case 'post': this.push(4, 'post', () => this.post()); break;
       case 'accepted': case 'rejected': this.letterFor(e.type === 'accepted', e.n); break;
@@ -194,6 +199,9 @@ export class House {
     if (this.state.radioNote > 0) this.state.radioNote--;
     if (this.timers.length) { const due = this.timers.filter((x) => --x.left <= 0); this.timers = this.timers.filter((x) => x.left > 0); for (const x of due) x.fn(); }
     if (this.state.radioHowl > 0) this.state.radioHowl--;
+    if (this.state.fireBoost > 0) this.state.fireBoost--;
+    if (this.state.chimneyBurst > 0) this.state.chimneyBurst--;
+    if (this.state.plane && ++this.state.plane.k >= this.state.plane.n) this.state.plane = null;
     if (this.state.phoneRinging && t % 30 === 0) this.sound.ring();
   }
 
@@ -534,6 +542,85 @@ export class House {
 
   newCarrier(kind) { return { x: -16, y: OUT_Y, face: 1, step: 0, phase: 'in', wait: 0, kind, carry: kind, letters: 0 }; }
 
+  // ---------- the showcase (2026-10-28, owner: "some more actions to add") ----------
+  // e: {kind, item, start(), stop(), ended(), seconds, done()}: main.js plays the media and says his lines; one scene of a
+  // kind waits at a time (the newest), the plane needs none of him
+  showEvent(e) {
+    const s = this.state;
+    if (e.kind === 'plane') { s.plane = { text: e.text, tx: e.tx, k: 0, n: sec(e.seconds || 22) }; return; }
+    if (e.kind === 'art') s.easelArt = e.art || s.easelArt;
+    const scenes = { video: [5, () => this.watchVideo(e)], audio: [5, () => this.listenAudio(e)], site: [5, () => this.showSite(e)],
+      art: [4.5, () => this.admireArt(e)], burn: [5.5, () => this.burnBox(e)] };
+    const sc = scenes[e.kind];
+    if (!sc) return;
+    const name = 'show-' + e.kind;
+    this.queue = this.queue.filter((q) => q.name !== name);
+    if (e.kind === 'burn' && !s.burnbox && !(this.carrier && this.carrier.kind === 'burnbox')) s.burnboxDue = true;
+    this.push(sc[0], name, sc[1]);
+  }
+
+  // a new video: he sits down in the armchair and watches it on the TV while it plays (at most e.seconds)
+  *watchVideo(e) {
+    const s = this.state, m = this.man;
+    yield* this.goTo('armchair');
+    m.seat = 12;
+    if (e.start) e.start();
+    for (let i = 0; i < sec(e.seconds || 40) && !(e.ended && e.ended()); i++) { s.action = 'tv'; m.pose = 'tvsit'; yield; }
+    if (e.stop) e.stop();
+    s.tvVideo = null; m.seat = 10;
+    yield* this.act('clap', 'stand', 1.5, 'heart');
+  }
+
+  // a new audio: he puts it on at the record player and listens, swaying, while it plays
+  *listenAudio(e) {
+    const s = this.state, m = this.man;
+    yield* this.goTo('records');
+    yield* this.act('records', 'stand', 1.2);
+    if (e.start) e.start();
+    for (let i = 0; i < sec(e.seconds || 45) && !(e.ended && e.ended()); i++) { s.action = 'records'; m.pose = 'dance'; m.icon = 'note'; yield; }
+    if (e.stop) e.stop();
+    m.icon = null;
+    yield* this.act('needle', 'reach', 0.7);
+  }
+
+  // a new site: it shows on the machine wall's main screen for a while; he stands in front and looks it over
+  *showSite(e) {
+    const s = this.state, m = this.man;
+    yield* this.goTo('desk');
+    s.siteShow = { host: e.host || null };
+    if (e.start) e.start();
+    for (let i = 0; i < sec(e.seconds || 22); i++) { s.action = 'site'; m.pose = 'stand'; m.icon = i < sec(2) ? 'star' : null; yield; }
+    if (e.stop) e.stop();
+    s.siteShow = null; m.icon = null;
+  }
+
+  // new art: the picture is on the easel already (showEvent); he steps up to it and admires it
+  *admireArt() {
+    yield* this.goTo('easel');
+    yield* this.act('admire', 'stand', 3.5, 'heart');
+  }
+
+  // the BurnExecutor sent IMD to Base to be burned: a box with the IMD logo comes to the door, he carries it straight to the
+  // fireplace and throws it in; the fire flares, the chimney billows, he says how much burned and thanks who sent it (done)
+  *burnBox(e) {
+    const s = this.state, m = this.man;
+    if (!s.burnbox) {
+      if (!(this.carrier && this.carrier.kind === 'burnbox')) s.burnboxDue = true;
+      for (let i = 0; i < sec(40) && !s.burnbox; i++) yield;
+    }
+    yield* this.goTo('parcel');
+    yield* this.act('pickup', 'reach', 0.8);
+    s.burnbox = false; m.carry = 'burnbox';
+    this.pace = 1.4;
+    yield* this.goTo('fire');
+    this.pace = 1;
+    yield* this.act('throw', 'reach', 0.9);
+    m.carry = null; s.fireBoost = sec(5); s.chimneyBurst = sec(10);
+    this.sound.clunk();
+    if (e.done) e.done();
+    yield* this.act('cheer', 'dance', 2.5, 'heart');
+  }
+
   // the seat's worker changed version: fetch the parcel from the doorstep and install it at the computer
   *install() {
     const s = this.state, m = this.man;
@@ -712,16 +799,18 @@ export class House {
     if (!this.carrier) {
       if (s.mailDue > 0) { this.carrier = this.newCarrier('letter'); this.carrier.letters = s.mailDue; s.mailDue = 0; }
       else if (s.parcelDue) { this.carrier = this.newCarrier('parcel'); s.parcelDue = false; }
+      else if (s.burnboxDue) { this.carrier = this.newCarrier('burnbox'); s.burnboxDue = false; }
       else if (s.paperDue) { this.carrier = this.newCarrier('paper'); s.paperDue = false; }
       else return;
     }
     const c = this.carrier;
     c.step++;
-    const stop = c.kind === 'parcel' ? 36 : 8;
+    const stop = c.kind === 'parcel' || c.kind === 'burnbox' ? 36 : 8;
     if (c.phase === 'in') { c.face = 1; c.x += 0.9; c.pose = 'walk'; if (c.x >= stop) { c.phase = 'drop'; c.wait = sec(1); c.pose = 'stand'; } }
     else if (c.phase === 'drop') {
       if (--c.wait <= 0) {
         if (c.kind === 'parcel') s.parcel = true;
+        else if (c.kind === 'burnbox') s.burnbox = true;
         else if (c.kind === 'paper') { s.paper = true; if (this.onPaper) this.onPaper(); }
         else { s.mailbox += c.letters; s.outgoing = 0; }
         c.carry = null; this.sound.clunk(); c.phase = 'out';

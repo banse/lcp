@@ -15,26 +15,63 @@
 <body>
 <header class="topbar">
   <div class="brand-row">
-    <a class="logo" href="https://archive.org/details/Little_Computer_People_1985_Activision" target="_blank" rel="noopener noreferrer"
-      title="Little Computer People (Activision, 1985) on the Internet Archive" aria-label="LCP: the original Little Computer People on the Internet Archive (opens in a new tab)"><span class="logo-mark" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path vector-effect="non-scaling-stroke" d="M2.2 6.6 A3 3 0 0 1 7.8 4.6 Q8 5.2 8.2 4.6 A3 3 0 0 1 13.8 6.6 C15.3 8.2 15 11.4 12.8 12.8 Q8 15.2 3.2 12.8 C1 11.4 0.7 8.2 2.2 6.6 Z"/><path vector-effect="non-scaling-stroke" d="M2.5 5.6 Q5 4.6 7.6 5.2 M8.4 5.2 Q11 4.6 13.5 5.6"/><path vector-effect="non-scaling-stroke" d="M3.4 10 Q8 12.8 12.6 10"/><circle cx="5.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/><circle cx="11.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/></svg></span><span class="logo-label">LCP</span></a>
+    <!-- the frog opens a menu (2026-10-27, owner: "make the frog button a menu entry with several submenus, put first he
+         dark/light switch in, then the music and sound switches, then add a "fullscreen mode" for the house"): light / dark,
+         the music (the radio), the house's sound, full screen, and last the link the logo was until then (src/menu.js; the
+         states: main.js menuSync). In full screen it floats in the corner, the way back to the menu -->
+    <div class="menu-wrap">
+      <button type="button" id="menu-btn" class="logo" aria-haspopup="menu" aria-expanded="false" aria-controls="lcp-menu" aria-label="LCP menu"
+        title="Light / dark, music, sound, full screen"><span class="logo-mark" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path vector-effect="non-scaling-stroke" d="M2.2 6.6 A3 3 0 0 1 7.8 4.6 Q8 5.2 8.2 4.6 A3 3 0 0 1 13.8 6.6 C15.3 8.2 15 11.4 12.8 12.8 Q8 15.2 3.2 12.8 C1 11.4 0.7 8.2 2.2 6.6 Z"/><path vector-effect="non-scaling-stroke" d="M2.5 5.6 Q5 4.6 7.6 5.2 M8.4 5.2 Q11 4.6 13.5 5.6"/><path vector-effect="non-scaling-stroke" d="M3.4 10 Q8 12.8 12.6 10"/><circle cx="5.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/><circle cx="11.9" cy="6.4" r="0.85" fill="currentColor" stroke="none"/></svg></span><span class="logo-label">LCP</span></button>
+      <div id="lcp-menu" class="menu" role="menu" aria-labelledby="menu-btn" hidden>
+        <button type="button" class="menu-item" role="menuitemcheckbox" aria-checked="true" id="menu-mode" data-item="mode" tabindex="-1"><svg
+          viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+          stroke-linejoin="round"><path d="M15.5 12.5A6.5 6.5 0 0 1 7.5 4.5a6.5 6.5 0 1 0 8 8z"/></svg><span class="menu-label">Dark mode</span><span class="menu-state" aria-hidden="true">on</span></button>
+        <button type="button" class="menu-item" role="menuitemcheckbox" aria-checked="false" id="menu-music" data-item="music" data-feature="radio" tabindex="-1" aria-describedby="menu-music-sub"><svg
+          viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+          stroke-linejoin="round"><path d="M7.5 15V4.5l9-2V13"/><circle cx="5.2" cy="15" r="2.3"/><circle cx="14.2" cy="13" r="2.3"/></svg><span class="menu-label">Music<span class="menu-sub" id="menu-music-sub" aria-hidden="true">theidm.fun</span></span><span class="menu-state" aria-hidden="true">off</span></button>
+        <button type="button" class="menu-item" role="menuitemcheckbox" aria-checked="false" id="menu-sound" data-item="sound" tabindex="-1"><svg
+          viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+          stroke-linejoin="round"><path d="M3 7.5h3l4-3.5v12l-4-3.5H3z"/><path d="M13.5 7a4 4 0 0 1 0 6M15.8 4.8a7 7 0 0 1 0 10.4"/></svg><span class="menu-label">Sound</span><span class="menu-state" aria-hidden="true">off</span></button>
+        <button type="button" class="menu-item" role="menuitemcheckbox" aria-checked="false" id="menu-full" data-item="full" tabindex="-1" aria-describedby="menu-full-sub"><svg
+          viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+          stroke-linejoin="round"><path d="M3 7.5V3h4.5M12.5 3H17v4.5M17 12.5V17h-4.5M7.5 17H3v-4.5"/></svg><span class="menu-label">Full screen<span class="menu-sub" id="menu-full-sub" aria-hidden="true">the house as large as it fits</span></span><span class="menu-state" aria-hidden="true">off</span></button>
+        <div class="menu-rule" role="separator"></div>
+        <a class="menu-item menu-link" role="menuitem" id="menu-original" href="https://archive.org/details/Little_Computer_People_1985_Activision" target="_blank" rel="noopener noreferrer"
+          tabindex="-1" title="Little Computer People (Activision, 1985) on the Internet Archive"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none"
+          stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3h6v6M17 3l-8 8M8 4.5H4v11.5h11.5V12"/></svg><span class="menu-label">The original<span class="menu-sub">Little Computer People, 1985, on the Internet Archive (new tab)</span></span></a>
+      </div>
+    </div>
     <a class="brand" href="./">Little Computer Pepes</a>
   </div>
+  <!-- three things since 2026-10-27 (owner: "only the LCP on the left, the dark/light mode switch at the right, and the
+       LITTLE COMPUTER PEPES in the middle"): Legend, Demo, Sound and Radio are switched off (FEATURES.barButtons); he does
+       each when asked ("legend", "demo", "sound on", "radio off"). Two things since the same day's menu: the switch is in
+       it (FEATURES.modeButton), this row stays as the bar's right side, empty, so the name keeps the middle -->
   <nav class="toggles" aria-label="Look and settings">
     <div class="looks" role="group" aria-label="Look" data-feature="lookSwitch">
       <button type="button" class="quiet" data-look-btn="imd" aria-pressed="false">IMD</button>
       <button type="button" class="quiet" data-look-btn="pixel" aria-pressed="false">LCP</button>
     </div>
-    <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog">Legend</button>
-    <button type="button" id="demo-btn" class="quiet" aria-pressed="false">Demo</button>
-    <button type="button" id="sound-btn" class="quiet" aria-pressed="false">Sound off</button>
-    <!-- the radio (2026-10-25, owner: the button in the header next to Sound): theidm.fun's station, src/radio.js -->
-    <button type="button" id="radio-btn" class="quiet" aria-pressed="false" data-feature="radio" title="Background music from theidm.fun: the live sound of a token's pool">Radio off</button>
-    <!-- like explorer.imd.fun's switch: the icon shows the other mode; its name stays for screen readers only (owner, 2026-10-25: no text) -->
-    <button type="button" id="mode-btn" class="quiet mode-btn" aria-label="switch between light and dark" title="light / dark"><svg
+    <button type="button" id="legend-btn" class="quiet" aria-haspopup="dialog" data-feature="barButtons">Legend</button>
+    <button type="button" id="demo-btn" class="quiet" aria-pressed="false" data-feature="barButtons">Demo</button>
+    <button type="button" id="sound-btn" class="quiet" aria-pressed="false" data-feature="barButtons">Sound off</button>
+    <!-- the radio (2026-10-25, owner: the button in the header next to Sound): theidm.fun's station, src/radio.js; shown only
+         when both are on (the radio itself plays on without its button, 2026-10-27) -->
+    <button type="button" id="radio-btn" class="quiet" aria-pressed="false" data-feature="radio barButtons" title="Background music from theidm.fun: the live sound of a token's pool">Radio off</button>
+    <!-- like explorer.imd.fun's switch: the icon shows the other mode; its name stays for screen readers only (owner, 2026-10-25: no text).
+         Switched off on 2026-10-27 (owner: "put first he dark/light switch in" the frog's menu; FEATURES.modeButton); its handler stays -->
+    <button type="button" id="mode-btn" class="quiet mode-btn" aria-label="switch between light and dark" title="light / dark" data-feature="modeButton"><svg
       viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"
       stroke-linecap="round" stroke-linejoin="round"><path class="moon" d="M15.5 12.5A6.5 6.5 0 0 1 7.5 4.5a6.5 6.5 0 1 0 8 8z"/><g
       class="sun"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/></g></svg><span>Light mode</span></button>
     <button type="button" id="wallet-btn" data-feature="wallet">Connect wallet</button>
+      <!-- the IMD logo on the bar's right side (2026-10-28, owner: "add the IMD logo to the right side of the header lihe the LCP
+         logo"; later that day: it should look like the IMD button on explorer.imd.fun, "the icon isnt rendered properly"): the
+         explorer's pill as it is, the diamond in its own cell, the full-height rule, IMD; a link to imd.fun -->
+    <a class="logo imd-logo" id="imd-logo" href="https://imd.fun/" target="_blank" rel="noopener noreferrer" aria-label="IMD, the swarm, on imd.fun"
+      title="imd.fun: the swarm he works for"><span class="logo-mark" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 16 16" fill="none"
+      stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter"><path vector-effect="non-scaling-stroke" d="M8 1.5 L14.5 8 L8 14.5 L1.5 8 Z"/></svg></span><span
+      class="logo-label">IMD</span></a>
   </nav>
 </header>
 <main class="page">
@@ -43,24 +80,24 @@
     <p id="lede">A little pepe lives the working day of one IMD swarm seat. Everything he does comes from the seat's public record.</p>
   </header>
 
-  <!-- one row (owner, 2026-10-25): a seat, a job, the explorer at the right end; it wraps on narrow screens -->
+  <!-- one row (owner, 2026-10-25): a seat and a job; it wraps on narrow screens (no explorer button any more: the column
+       beside the house opens only when Pepe is asked, 2026-10-26). Both switched off on 2026-10-27 (owner: "remove the
+       buttons RANDOM and VISIT, Seat label and input and also the job combo box and follow job buttons. actions stay still
+       available by asking pepe"; FEATURES.seatForm, FEATURES.jobForm): "visit 1299", "random seat", "follow job <id>",
+       "random job" or a pasted job id on the talk line; the row takes no room while nothing in it shows -->
   <section class="controls" aria-label="Choose a seat or a job">
-    <form id="seat-form" class="seat-form">
+    <form id="seat-form" class="seat-form" data-feature="seatForm">
       <label for="seat-input">Seat</label>
       <input id="seat-input" type="number" min="0" max="1999" inputmode="numeric" placeholder="0–1999">
       <button type="submit">Visit</button>
       <button type="button" id="random-btn" class="quiet" aria-label="Random seat" title="A random busy seat">Random</button>
     </form>
     <!-- following a job: the active ones (hosted: the ones the swarm's live feed shows, and open oracle questions) -->
-    <form id="job-form" class="seat-form job-form">
+    <form id="job-form" class="seat-form job-form" data-feature="jobForm">
       <label for="job-select">Job</label>
       <select id="job-select"><option value="">Reading the active jobs…</option></select>
       <button type="submit" id="follow-job-btn" class="quiet">Follow job</button>
     </form>
-    <span class="split-actions">
-      <button type="button" id="random-job-btn" class="quiet" hidden>Random job</button>
-      <button type="button" id="explorer-btn" class="quiet" hidden title="This seat, or the followed job, on explorer.imd.fun">IMD Explorer</button>
-    </span>
     <div id="wallet-panel" class="wallet" hidden aria-live="polite">
       <p id="wallet-note"></p>
       <div id="wallet-choices" class="doors"></div>
@@ -103,6 +140,14 @@
           <button type="button" id="station-close">Close</button>
         </article>
       </div>
+      <!-- what changed in the house (2026-10-28, owner: "add a changelog popup showing what changed when someone asks for the changelog"; src/changelog.js) -->
+      <div id="changelog-pop" class="letter-pop" hidden>
+        <article class="letter changelog-card" role="dialog" aria-labelledby="changelog-head">
+          <h2 id="changelog-head">What changed</h2>
+          <div id="changelog-list" class="changelog-list"></div>
+          <button type="button" id="changelog-close">Close</button>
+        </article>
+      </div>
       <!-- his whiteboard large: the job his seat works on, his steps ringed (main.js, boardSvg) -->
       <div id="board-pop" class="letter-pop" hidden>
         <article class="letter board-card" role="dialog" aria-labelledby="board-head">
@@ -133,19 +178,30 @@
     <p id="talk-reply" class="talk-reply" aria-live="polite"></p>
   </section>
   <!-- the radio (2026-10-25): a theidm.fun station plays in a hidden frame of their stream page (src/radio.js, audio only);
-       the record player in the music room shows it; the Radio button sits in the top bar next to Sound. The frame exists
+       the record player in the music room shows it; the Radio button sat in the top bar next to Sound (switched off on
+       2026-10-27: "radio on" / "radio off" on the talk line; this container stays on with FEATURES.radio). The frame exists
        only while it plays (removed on off), and a browser lets it start only after the visitor's first click or key -->
   <!-- the line naming the station (switched off by the owner, 2026-10-25: "remove this line"; FEATURES.radioLine brings it back) -->
   <p id="radio-line" class="radio-line" data-feature="radioLine" aria-live="polite">♪ <b id="radio-station">Radio</b> <span id="radio-note">off</span>
     <a id="radio-open" href="https://theidm.fun/" target="_blank" rel="noopener noreferrer" title="theidm.fun: every trade is a note">theidm.fun</a></p>
   <div id="radio" data-feature="radio" aria-hidden="true"></div>
 
-  <!-- a chart or swap page he opened, when the side-by-side page is not around (a hosted copy, or the house alone);
-       straight from its own site, sandboxed so it cannot move this page. Off in the swarm build (FEATURES.marketPane,
-       2026-10-25): main.js adds the sandboxed frame element only when the pane shows a page, so with it off there is none -->
-  <aside id="pane" class="side-pane" hidden aria-label="A page he opened" data-feature="marketPane">
-    <div class="pane-head"><b id="pane-name"></b><a id="pane-open" target="_blank" rel="noopener noreferrer">open</a>
-      <button type="button" id="pane-close" class="quiet">Close</button></div>
+  <!-- the house's own column (own pane, 2026-10-26, src/column.js): the swarm's jobs and seats (panels/, this origin) or a page
+       Pepe shows (a chart, the Sworn site, the burn tracker, an explorer page). No button opens it (owner: "kein button, man
+       muss pepe danach fragen dann macht er es"); only his answers do, and the × closes it (over the list: the × in the
+       list's tab row; the head shows only for a token or a page). Desktop: fixed on the right with a
+       grip; a phone: here in the flow, under the house. The frames are made only when it shows something; the swarm build
+       has none (FEATURES.column) -->
+  <aside id="column" class="column" hidden aria-label="Beside the house" data-feature="column">
+    <div id="column-grip" class="column-grip" role="separator" aria-orientation="vertical" aria-label="The column's width"
+      aria-valuemin="30" aria-valuemax="70" aria-valuenow="44" tabindex="0"></div>
+    <div id="column-head" class="column-head" hidden>
+      <b id="column-name"></b>
+      <a id="column-open" target="_blank" rel="noopener noreferrer" hidden>open</a>
+      <button type="button" id="column-back" class="quiet" hidden>Back to the list</button>
+      <button type="button" id="column-close" class="quiet column-x" aria-label="Close the column" title="Close">×</button>
+    </div>
+    <div id="column-body" class="column-body"></div>
   </aside>
 
   <section class="below">
@@ -196,8 +252,10 @@
         <tr><td>He cheers</td><td>a job he worked on is done</td></tr>
         <tr><td>He scratches his head</td><td>a job he worked on is blocked</td></tr>
         <tr><td>Fireworks over the roof</td><td>a launch he worked on went live</td></tr>
-        <tr><td>You type to him on the line under the seat row</td><td>he does it, answers at his machine (an explorer page opens beside him), or, while the seat works, tells you to wait; ask too much and he takes the dog out for a walk. help lists what he understands</td></tr>
-        <tr><td>You ask him about a token: price, chart, buy or sell, with its contract address</td><td>he reads its price on DexScreener; a chart opens on defined.fi and a buy or sell on LlamaSwap, beside him in the split view. Give him a ticker alone and he asks which one you mean. Not financial advice</td></tr>
+        <tr><td>You type to him on the line under the house</td><td>he does it, answers at his machine (an explorer page opens beside him), or, while the seat works, tells you to wait; ask too much and he takes the dog out for a walk. help lists what he understands</td></tr>
+        <tr><td>You ask him about a token: price, chart, buy or sell, with its contract address</td><td>a swarm launch or IMD: he reads its own pool, and where the house has its column the pool shows beside him (chart, liquidity, volume, hook); any other token: its price on DexScreener, and a chart opens on defined.fi in a new tab. No swaps for now: a buy or sell gets the defined.fi link. Give him a ticker alone and he asks which one you mean. Not financial advice</td></tr>
+        <tr><td>You tell him your wallet: "my wallet is 0x…" or a name.eth</td><td>on the self-hosted copy he notes it in this browser only and says it back shortened; then "show my portfolio" pins up what each swarm token in it would sell for now in its own launch pool; "forget my wallet" takes it out again. Only names the mainnet ENS registry resolves directly; for others he asks for the 0x address</td></tr>
+        <tr><td>You ask for the launches: "show launches"</td><td>on the self-hosted copy he pins up every swarm launch with its pool price beside him; a click on one opens its pool</td></tr>
         <tr><td>You ask about NFTs, floor prices or alpha</td><td>he tells you about Sworn and to mint a card; Sworn opens beside him</td></tr>
         <tr><td>You ask about IMD burns</td><td>the burn tracker opens beside him, and he tells you that anyone can update it</td></tr>
         <tr><td>Big fireworks, and he dances in the kitchen with his dog</td><td>the job the page follows (#/job/…) is done</td></tr>

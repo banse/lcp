@@ -6,7 +6,7 @@
 // hive in the house's greys at the real card's layout (measured from tokenURI of cards #1..#11 on 2026-10-26).
 export const SWORN = {
   registry: '0x0da2679000ea5380d1361cc3cca7d4e8c881f766',
-  site: 'https://sworn.sites.imd.fun/',
+  site: 'https://sworn.vibingco.de/',            // the owner's copy (2026-10-27), as Pepe's links
   rpc: ['https://ethereum-rpc.publicnode.com', 'https://mainnet.gateway.tenderly.co'],
 };
 export const SEL = { tokenOf: '0x42ec38e2', traitsOf: '0xc26b340e', hasTrait: '0xb75a3e4e' };

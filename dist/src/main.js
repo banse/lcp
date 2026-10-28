@@ -9,17 +9,22 @@ import { taskCategory } from './feed.js';
 import { THEMES, DEFAULT_THEME } from './themes/index.js';
 import { THINGS } from './themes/imd-layout.js';
 import { setPhase } from './world.js';
-import { parse, answer, pick, stressCost, HELP, BUSY, DO, EGG, UNKNOWN, ASLEEP, AWAY, OUT, WALKOUT, LOOKUP, STRESS, MARKET, marketText,
-  SWORN, BURN, RADIO, NEWS, trophyLine } from './talk.js';
+import { parse, answer, pick, stressCost, HELP, BUSY, DO, EGG, UNKNOWN, ASLEEP, AWAY, OUT, WALKOUT, LOOKUP, STRESS, MARKET, marketText, poolText,
+  SWORN, BURN, OXTXT, SHOW, RADIO, NEWS, WALLET, SCREEN, FAQ, SUGGEST, trophyLine } from './talk.js';
 import { DAILY, latestIssue, issueLine, paperLines } from './daily.js';
 import { NewsReader } from './news.js';
 import { cardOf } from './sworn.js';
-import { SWORN_FRAME, GRID_PANEL } from './themes/imd.js';
+import { SWORN_FRAME, GRID_PANEL, SHOW_SPOTS } from './themes/imd.js';
+import { ShowcaseFeed, videoEl, dropMedia, siteOverlay, VIDEO_S, AUDIO_S, SITE_S, PLANE_S } from './showcase.js';
+import { CHANGELOG } from './changelog.js';
 import { StationPop } from './station.js';
 import { Radio, STATIONS, PENDING, GAIN, stationByName, stationFor, sadStation, SITE as THEIDM } from './radio.js';
-import { StationFeed, SILENCE, amount } from './stationfeed.js';
-import { IMD_CA, WETH, CHAINS, launchOf, quote, chartUrl, swapUrl, usd, DEFINED_URL, LLAMA_URL } from './market.js';
-import { LOCAL, RELAY } from './env.js';
+import { StationFeed, SILENCE, POLL_MS, amount, readGrid } from './stationfeed.js';
+import { IMD_CA, IMD_POOL, WETH, CHAINS, CHAIN_OF_ID, launchOf, quote, poolQuote, poolNum, chartUrl, usd, DEFINED_URL } from './market.js';
+import { RELAY, MIRRORS, proxyUrl } from './env.js';
+import { Column } from './column.js';
+import { Menu } from './menu.js';
+import { FullScreen, place } from './full.js';
 import { BUILD } from './build.js';
 
 const $ = (id) => document.getElementById(id);
@@ -27,8 +32,10 @@ const $ = (id) => document.getElementById(id);
 // switch (IMD | LCP) and the wallet lookup. Elements marked data-feature="…" show only when theirs is on.
 // machineTicker: the green ticker and the effort dial on the machine wall (owner, 2026-10-24: reverted, other ways to
 // show provider, model and effort wanted); the data behind it (LiveFeed.checkMachine) still runs.
-// marketPane: charts and swaps in a frame of this page, off in the swarm build only (owner, 2026-10-25: a first swarm-hosted
-// version without iframe features; "the server version should have all features"); off, he answers with the link
+// marketPane: a token's market beside him, off in the swarm build only (owner, 2026-10-25: a first swarm-hosted version
+// without iframe features; "the server version should have all features"): since 2026-10-26 (launch panel) a swarm
+// launch's or IMD's own pool in the column's token panel, any other token on defined.fi in a new tab; off, he answers
+// with the defined.fi link
 // boardSeats: a "Working now" row of buttons under the large whiteboard (2026-10-25; switched off the same day, owner:
 // "just make the cards directly clickable … without extra buttons"); the cards switch the seat either way
 // radio: theidm.fun's stations as the house's background music (2026-10-25, radio.js), in every build; radioLine: the line
@@ -38,29 +45,89 @@ const $ = (id) => document.getElementById(id);
 // sworn: the seat owner's Sworn card over the fireplace (2026-10-26, sworn.js), in every build
 // counters: the Tasks / Accepted / Rejected / Failed panel under the house (switched off by the owner, 2026-10-26: "remove this
 // panel"; the plaque on the tree carries the acceptance rate and his expertise instead, FEATURES.plaque)
-const FEATURES = { lookSwitch: false, wallet: false, machineTicker: false, marketPane: BUILD !== 'swarm', boardSeats: false, radio: true, radioLine: false, news: true, sworn: true, counters: false, plaque: true };
-// a switched-off feature's elements are hidden; the others keep their own state (the pane stays hidden until it shows a page)
-for (const el of document.querySelectorAll('[data-feature]')) if (!FEATURES[el.dataset.feature]) el.hidden = true;
+// column: the house's own column beside it (2026-10-26, src/column.js): the swarm's jobs and seats from this origin's
+// relay, or a page he shows; off in the swarm build (no relay to read the list through, api.imd.fun sends no CORS)
+// seatForm, jobForm, barButtons (switched off by the owner, 2026-10-27: "remove the buttons RANDOM and VISIT, Seat label and
+// input and also the job combo box and follow job buttons. actions stay still available by asking pepe. same for demo sound
+// off and radio off. only the LCP on the left, the dark/light mode switch at the right, and the LITTLE COMPUTER PEPES in the
+// middle"): the Seat row (input, Visit, Random), the job list with Follow job, and Legend / Demo / Sound / Radio in the top
+// bar. Their handlers stay; the talk line does each ("visit 1299", "random seat", "follow job <id>", "random job", "legend",
+// "help", "demo", "sound on|off", "radio on|off"; pageCommand clicks the hidden Legend and Demo buttons as before)
+// modeButton: the light / dark switch at the right end of the top bar (switched off by the owner, 2026-10-27: "make the frog
+// button a menu entry with several submenus, put first he dark/light switch in"): the frog's menu has it (src/menu.js), with
+// the music, the sound and full screen; its handler stays, and the bar keeps its empty right side, so the name stays centred
+const FEATURES = { lookSwitch: false, wallet: false, machineTicker: false, marketPane: BUILD !== 'swarm', boardSeats: false, radio: true, radioLine: false, news: true, sworn: true, counters: false, plaque: true, column: BUILD !== 'swarm',
+  seatForm: false, jobForm: false, barButtons: false, modeButton: false,
+  showcase: BUILD === 'server',
+  // what visitors ask, counted (2026-10-28, owner: "counts only for now"): the kind and act of each line, never its text
+  talkCounts: BUILD === 'server',
+  // his own record with the visitor's music off (2026-10-26) played the station anyway; off since 2026-10-28 (owner: "music should
+  // only be external audio from jobs or videos or anything else, and sound should be everything produced by pepe itself")
+  recordsWithoutMusic: false };                        // the swarm's new work and the burns acted out (2026-10-28): the server's /proxy/showcase
+// a switched-off feature's elements are hidden; the others keep their own state (the pane stays hidden until it shows a page).
+// An element may name several (data-feature="radio barButtons"): it shows only while all of them are on
+for (const el of document.querySelectorAll('[data-feature]')) if (el.dataset.feature.split(/\s+/).some((f) => !FEATURES[f])) el.hidden = true;
+
+// the house's own column (src/column.js; below, "the column beside the house"): made before the mode, which it follows.
+// Its list is panels/ next to this page (relative, so the house served under /pepe/ frames /pepe/panels/).
+const column = FEATURES.column ? new Column({ panelUrl: new URL('panels/', document.baseURI).href, onPick: picked, onResize: () => columnMoved(),
+  onNotLaunch: (ca) => addDiary(`The pool reader knows no launch at ${ca}; defined.fi has it (his answer links it).`) }) : null;
+
+// the house in full screen (2026-10-27, src/full.js): the browser's full screen while the column is shut, the whole left
+// side while it is open; fit() lays it out, the frog's menu and the talk line switch it
+const WIDE = matchMedia('(min-width: 900px)');                 // style.css: the column fixed on the right from 900px
+const full = new FullScreen({ columnOpen: () => !!(column && column.open), wide: () => WIDE.matches, onChange: () => { fit(); menuSync(); } });
+let menu = null;                                               // the frog's menu (below, once the radio and the sound exist)
+let columnWas = false;
+function columnMoved() {                                       // the column opened, closed or changed width
+  const open = !!(column && column.open);
+  if (open !== columnWas) { columnWas = open; full.column(open); }
+  fit();
+}
+
+// the visitor's wallet (launches-portfolio Task 5, 2026-10-26; owner: "dazu muss man pepe aber erst sein wallet nennen",
+// "can be stored in local storage client side"): told to him in the command line ("my wallet is 0x…" or a name.eth, which
+// the server resolves), kept only in this browser as localStorage['lcp:wallet'], and only as an address of 40 hex digits
+// (lowercase); anything else found there is removed and he asks again. It reaches the column's panel by message only
+// (column.sync), never a url, a log or the console; his lines and the diary show it shortened. The swarm build keeps none.
+const WALLET_KEY = 'lcp:wallet', WALLET_RE = /^0x[0-9a-f]{40}$/;
+const ENS_NAME = (n) => n.length <= 64 && n.endsWith('.eth') && n.split('.').every((l) => /^[a-z0-9-]{1,63}$/.test(l));   // panels.py plain_name
+const shortAddr = (a) => a.slice(0, 4) + '…' + a.slice(-4);
+// the visitor's words as the diary keeps them: any 0x address in them shortened (2026-10-27: "whats my portfolio ? 0x…" put
+// the whole address in the diary)
+const echo = (cmd) => cmd.replace(/0x[0-9a-f]{40}/gi, (a) => shortAddr(a.toLowerCase()));
+function storedWallet() {
+  if (!column) return null;
+  try {
+    const v = localStorage.getItem(WALLET_KEY);
+    if (v == null) return null;
+    if (WALLET_RE.test(v)) return v;
+    localStorage.removeItem(WALLET_KEY);                  // a bad value: gone, he asks again
+  } catch (e) { /* no storage */ }
+  return null;
+}
+let visitorWallet = storedWallet();
+if (column && visitorWallet) column.sync({ wallet: visitorWallet });
+function keepWallet(w) {
+  visitorWallet = w;
+  try { if (w) localStorage.setItem(WALLET_KEY, w); else localStorage.removeItem(WALLET_KEY); } catch (e) { /* this visit only */ }
+  if (column) column.sync({ wallet: w });
+}
 
 // light or dark page around the house (IMD look). The switch in the top bar works like explorer.imd.fun's (it names the
-// other mode; the choice is kept in this browser); inside the side-by-side page the explorer's mode decides instead
-// ({type: 'lcp:mode', mode}, kept for this tab, so a reload of the frame starts in it). Dark when nothing says; a
-// script in index.html sets it before the first paint.
+// other mode; the choice is kept in this browser, and this tab's in sessionStorage). Dark when nothing says; a script in
+// index.html sets it before the first paint. The column's list follows it (house -> panel since 2026-10-26; until then
+// the two-pane page sent the explorer's mode the other way).
 function setMode(m, keep = false) {
   if (m !== 'light' && m !== 'dark') return;
   document.documentElement.dataset.mode = m;
   try { sessionStorage.setItem('lcp:mode', m); if (keep) localStorage.setItem('lcp:mode', m); } catch (e) { /* no storage */ }
   $('mode-btn').querySelector('span').textContent = m === 'dark' ? 'Light mode' : 'Dark mode';
+  if (column) column.sync({ mode: m });
+  menuSync();
 }
 try { setMode(sessionStorage.getItem('lcp:mode') || localStorage.getItem('lcp:mode') || 'dark'); } catch (e) { setMode('dark'); }
 $('mode-btn').addEventListener('click', () => setMode(document.documentElement.dataset.mode === 'light' ? 'dark' : 'light', true));
-window.addEventListener('message', (e) => {
-  if (!e.data) return;
-  if (e.data.type === 'lcp:mode') setMode(e.data.mode);
-  if (e.data.type === 'lcp:split' && e.source === window.parent && window.parent !== window) {
-    inSplit = !!e.data.on; activeJobs = Number(e.data.activeJobs) || 0; explorerButton();
-  }
-});
 const canvas = $('game');
 let g = canvas.getContext('2d');
 let theme = (FEATURES.lookSwitch && THEMES[store('seathouse:theme')]) || THEMES[DEFAULT_THEME];
@@ -79,14 +146,33 @@ const news = FEATURES.news ? new NewsReader() : null;
 let newsIssue = null;
 let radioStage = 0, radioBpm = 100, radioRate = null, radioFeedKey = null, sadTimer = null;
 let radioGrid = null;   // the playing station's sequencer state from its hook ($IDM), drawn over the piano while music plays
+// a station without a hook has no grid of its own: the panel then shows the hooked station's last read pattern in the
+// playing station's colour (owner 2026-10-26: the panel over the piano went missing on the deployed page, where a new
+// visitor starts on IMD/ETH; "panel immer zeigen"), read every POLL_MS while such a station plays
+const HOOKED = STATIONS.find((s) => s.pool.hook);
+let hookGrid = null, hookTimer = null;
+const shownGrid = () => radioGrid || (radio.live && !radio.station.pool.hook ? hookGrid : null);
+function hookGridSync() {
+  const want = FEATURES.radio && HOOKED && radio.live && !radio.station.pool.hook;
+  if (!want) { clearInterval(hookTimer); hookTimer = null; return; }
+  if (hookTimer) return;
+  const read = async () => {
+    const g = await readGrid(HOOKED);
+    if (!g || !hookTimer) return;
+    hookGrid = g; radioSync();
+    if (stationPop && stationPop.open_ && !radioGrid) stationPop.update(hookGrid, {});
+  };
+  hookTimer = setInterval(read, POLL_MS);
+  read();
+}
 function radioSync() {
   if (!house) return;
-  house.state.radio = FEATURES.radio ? radio.houseState({ bpm: radioBpm, stage: radioStage, grid: radioGrid }) : null;
+  house.state.radio = FEATURES.radio ? radio.houseState({ bpm: radioBpm, stage: radioStage, grid: shownGrid() }) : null;
   house.onPaper = onPaper;
   house.onNeedle = onNeedle;
   // his own record (the routine, or "spin a record"): music while he is at the player, even with the visitor's radio off
   house.onRecords = (on) => {
-    if (!FEATURES.radio || radio.on) return;
+    if (!FEATURES.radio || radio.on || !FEATURES.recordsWithoutMusic) return;
     if (on) { radio.playFor('records'); if (radio.live) addDiary(`He puts a record on: ${radio.label()}.`); }
     else { if (radio.live) addDiary('He lifts the needle.'); radio.stopFor('records'); }
   };
@@ -94,14 +180,13 @@ function radioSync() {
 // the needle drops (the owner, 2026-10-26: a short party riff every time he puts a record on): the house's own chip riff
 // (sound.js RIFF), or a clip of the owner's (their file and licence) named here, e.g. 'assets/celebrate.mp3'; a probe for
 // the file was a 404 in the console on every hosted load (v2 live check), so the name is set by hand. Heard with the
-// visitor's sound on or the radio playing. Returns the seconds he stands at the player before the music.
+// visitor's sound on, never for the music alone (2026-10-28: Sound is what Pepe makes himself, the piano, his beeps, this
+// celebration; Music is the audio from outside). Returns the seconds he stands at the player before the music.
 const celebrateClip = null;
 function onNeedle() {
-  if (!FEATURES.radio) return 0;
-  const wanted = sound.on || radio.live || radio.on;
-  if (!wanted) return 0;
+  if (!FEATURES.radio || !sound.on) return 0;
   house.lastNeedle = { kind: celebrateClip ? 'clip' : 'riff', at: Date.now() };
-  return celebrateClip ? sound.clip(celebrateClip, 4) : sound.riff(true);
+  return celebrateClip ? sound.clip(celebrateClip, 4) : sound.riff();
 }
 function radioChanged(r) {
   if (!FEATURES.radio) return;
@@ -114,6 +199,8 @@ function radioChanged(r) {
   radioSync();
   const key = r.live ? st.key : null;
   if (key !== radioFeedKey) { radioFeedKey = key; radioStage = 0; radioRate = null; radioGrid = null; if (stationPop) stationPop.close(); if (key) stationFeed.start(st); else stationFeed.stop(); radioSync(); }
+  hookGridSync();
+  menuSync();
 }
 // the station's pool, as the stream page reads it: a note per trade, whales, pulses, the silence stages, a finished track
 function onStationEvent(e) {
@@ -153,6 +240,9 @@ function sadRecord() {
   sadTimer = setTimeout(() => { if (radio.restore('sad', true)) { addDiary(`Back to ${radio.station.label}.`); if (house) house.event({ type: 'radio', act: 'tune', done: () => radio.sync() }); else radio.sync(); } }, 45000);
 }
 let house = null, seatSeed = 4242, feed = null, seatId = null, mode = null, tick = 0;
+// the showcase's media and what shows now (2026-10-28; its functions further down, showReset runs with every new house)
+const showing = { video: null, audio: null, site: null };
+let tvVideo = null, showAudio = null, siteEl = null, lastArt = null, burnShown = null, showFeed = null, audioAt = 0;
 let pendingLetter = null, wallet = null, lastUpdate = null;
 const ownedSeats = new Set();
 const KNOCK_AGAIN_MS = 30 * 60000, ACK_MS = 6 * 3600000;
@@ -182,9 +272,39 @@ function draw() {
 }
 
 function fit() {
+  const lay = full.layout, root = document.documentElement, talk = document.querySelector('.talk');
+  if (lay) root.dataset.full = lay; else delete root.dataset.full;
+  if (column && column.open) column.placeTop();                 // the top bar is back (or gone) before the column is measured
+  if (lay === 'house' || lay === 'side') return fitFull(lay, root, talk);
+  delete talk.dataset.place;
+  for (const v of ['--house-x', '--house-y', '--house-w', '--talk-x', '--talk-y', '--talk-w', '--talk-h', '--strip-h']) root.style.removeProperty(v);
   const avail = Math.min(document.querySelector('.page').clientWidth, window.innerWidth - 32);
   canvas.style.width = '100%';
   canvas.parentElement.style.width = theme.cssWidth(avail);   // the screen box carries the width; the letter covers it
+  if (theme.scale) theme.scale(canvas, 0);
+}
+
+// full screen (src/full.js): the house in a box, the window's (house) or the room left of the column under the top bar
+// (side); the talk line under it, beside it, or over the ground strip in front of the house when there is no room (place()).
+// Both are fixed boxes (style.css html[data-full]); the canvas is drawn at the size it is shown, so it stays crisp.
+function fitFull(lay, root, talk) {
+  let box = { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
+  if (lay === 'side') {
+    const col = $('column').getBoundingClientRect(), left = parseFloat(getComputedStyle(document.body).paddingLeft) || 16;
+    box = { x: left, y: col.top, w: Math.max(0, col.left - 24 - left), h: Math.max(0, window.innerHeight - col.top - 16) };
+  }
+  delete talk.dataset.place;
+  const line = $('talk-form').offsetHeight || 40;
+  const p = place(box, { below: line + 56, step: theme.id === 'pixel' ? 480 : 0, top: lay === 'side', pad: lay === 'house' ? 8 : 0 });   // under it: the line, two lines of his reply
+  const px = (v) => Math.round(v * 10) / 10 + 'px';
+  root.style.setProperty('--house-x', px(p.house.x)); root.style.setProperty('--house-y', px(p.house.y)); root.style.setProperty('--house-w', px(p.house.w));
+  root.style.setProperty('--talk-x', px(p.talk.x)); root.style.setProperty('--talk-y', px(p.talk.y));
+  root.style.setProperty('--talk-w', px(p.talk.w)); root.style.setProperty('--talk-h', px(p.talk.h));
+  root.style.setProperty('--strip-h', px(p.where === 'over' ? p.talk.h + 8 : 0));   // the house's popups stay above the line
+  talk.dataset.place = p.where;
+  canvas.style.width = '100%';
+  canvas.parentElement.style.width = px(p.house.w);
+  if (theme.scale) theme.scale(canvas, p.house.w * (window.devicePixelRatio || 1));
 }
 
 // ---------- looks: each theme draws the house its own way and has its own mapping ----------
@@ -228,7 +348,7 @@ function visit(id, job = false, hint = null) {
   if (!job) stopFollowing();
   demo.stop(); setPhase(null);
   mode = 'live'; seatId = id;
-  house = new House(id, sound, theme); seatSeed = id; theme.setSeed(id); radioSync(); house.state.seatNo = id;
+  house = new House(id, sound, theme); seatSeed = id; theme.setSeed(id); radioSync(); house.state.seatNo = id; showReset();
   house.onLetterDone = showLetter;
   house.onKnock = showKnock;
   feed = live; lastUpdate = null; hideKnock();
@@ -240,7 +360,7 @@ function visit(id, job = false, hint = null) {
   $('demo-btn').setAttribute('aria-pressed', 'false');
   if (!job && location.hash !== '#/seat/' + id) history.replaceState(null, '', '#/seat/' + id);
   live.setSeat(id, hint);
-  explorerButton();
+  columnSync();
   plaqueRetry = 0; clearTimeout(plaqueTimer);
   dailyPending = null; setTimeout(dailyWatch, 6000);          // a new seat: the day's paper, if this browser hasn't had it
   if (FEATURES.sworn) swornFor(id, house);
@@ -249,20 +369,23 @@ function visit(id, job = false, hint = null) {
 }
 
 // ---------- following a job: the house of the seat working on it, then of the seat on its next step ----------
-// step: #/job/<id>/step/<key>, a step the visitor chose (the side-by-side page sends it when a step row of the job opens
-// in the explorer); the address goes back to #/job/<id>, so choosing it again is a new address change
+// step: #/job/<id>/step/<key>, a step the visitor chose (a pasted step link); the address goes back to #/job/<id>, so
+// choosing it again is a new address change
 function followJob(id, step = null) {
   if (location.hash !== '#/job/' + id) history.replaceState(null, '', '#/job/' + id);
   if (followed && followed.id === id) { if (step) follower.prefer(step); return; }
   followed = { id, job: null };
   clearDiary();
   addDiary(`Looking up job ${id.slice(0, 8)}…`);
+  if (pickedJob === id) addDiary('You picked it from the list beside the house; he follows it.');
+  pickedJob = null;
+  columnSync();
   setLede(followLede(), true);
   follower.start(id, step);
   renderJobs(jobList);
 }
 
-function stopFollowing() { follower.stop(); followed = null; renderJobs(jobList); if (FEATURES.radio && radio.restore('follow')) addDiary(`Back to ${radio.station.label} on the radio.`); }
+function stopFollowing() { follower.stop(); followed = null; renderJobs(jobList); columnSync(); if (FEATURES.radio && radio.restore('follow')) addDiary(`Back to ${radio.station.label} on the radio.`); }
 // the station follows the work (2026-10-25): a followed job about a token that has a station puts that record on
 function followRadio(job) {
   if (!FEATURES.radio || !radio.live || !job) return;
@@ -276,13 +399,23 @@ function jobName(job) {
   return o ? `"${o}"` : 'job ' + followed.id.slice(0, 8);
 }
 
-// two lines over the whole width (the owner, 2026-10-26): the job and its first sentence, then what the house does
+// the job, then a blank line, then what the house does (the owner, 2026-10-26: two lines over the whole width; 2026-10-27:
+// "remove this after job id" (its first sentence), "make jobid to a link that opens the job with expanded description in
+// the right panel", "add a blank line below that line and the next"). Without the column the id opens the explorer's job page
 function followLede() {
-  const j = followed && followed.job;
-  return `Following job ${followed.id.slice(0, 8)}${j && j.objective ? ': ' + jobName(j) : '.'}\nThe house is the seat working on it now, and moves to the seat on its next step.`;
+  const id = followed.id;
+  const a = document.createElement('a');
+  a.className = 'lede-job'; a.textContent = id.slice(0, 8);
+  if (column) {
+    a.href = '#/job/' + id; a.title = 'this job in the list on the right, its description whole';
+    a.addEventListener('click', (e) => { e.preventDefault(); column.showJob(id); });
+  } else {
+    a.href = 'https://explorer.imd.fun/jobs/' + id; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  }
+  return ['Following job ', a, '.\n\nThe house is the seat working on it now, and moves to the seat on its next step.'];
 }
 const DEFAULT_LEDE = 'A little pepe lives the working day of this IMD swarm seat. Everything he does comes from the seat\'s public record.';
-function setLede(text, wide = false) { const el = $('lede'); el.textContent = text; el.classList.toggle('wide', !!wide); }
+function setLede(text, wide = false) { const el = $('lede'); el.replaceChildren(...[].concat(text)); el.classList.toggle('wide', !!wide); }
 
 // the step a seat runs for the followed job: the house shows that work, not a guess from the seat's recent tasks
 function stepHint(e, st) {
@@ -342,7 +475,7 @@ function startDemo() {
   live.stop();
   talkState.stress = 0; talkReply(null);
   mode = 'demo'; seatId = 'demo';
-  house = new House(4242, sound, theme); seatSeed = 4242; theme.setSeed(4242); radioSync(); house.state.seatNo = '0000';
+  house = new House(4242, sound, theme); seatSeed = 4242; theme.setSeed(4242); radioSync(); house.state.seatNo = '0000'; showReset();
   house.onLetterDone = showLetter;
   house.onKnock = showKnock; lastUpdate = null; hideKnock();
   clearDiary(); hideLetter();
@@ -351,7 +484,7 @@ function startDemo() {
   $('demo-btn').setAttribute('aria-pressed', 'true');
   if (location.hash !== '#demo') history.replaceState(null, '', '#demo');
   demo.start();
-  explorerButton();
+  columnSync();
 }
 
 // a seat working right now; if none is, one that finished a task in the last hour, else in the last 24 hours
@@ -650,47 +783,35 @@ $('wallet-forget').addEventListener('click', () => {
   $('wallet-btn').textContent = 'Connect wallet'; $('wallet-forget').hidden = true;
 });
 
-// ---------- the IMD Explorer beside the house: the local side-by-side page (tools/side-by-side/, port 8798) ----------
-// On its own the house offers "IMD Explorer" while that page answers: it opens with this house on the left and
-// the seat's agent page on the right (following the same job, if one is followed). Inside it, the page says so
-// ({type: 'lcp:split', on: true, activeJobs}) and the button hides the explorer again: the page goes back to this
-// house alone; "Random job" asks the page to follow one (its job page left, this house following it).
-// A hosted copy, or a page framed by anything else, shows neither (the hosted copy did until 2026-10-26: `!LOCAL` let the
-// button through as a link to explorer.imd.fun; the owner: "in der deployten version ist plötzlich der IMD EXPLORER BUTTON
-// wieder drin").
-const SPLIT = 'http://127.0.0.1:8798/side-by-side';
-const EXPLORER = 'https://explorer.imd.fun';                  // a hosted page opens it in a new tab (it refuses frames)
-let inSplit = false, splitUp = false, activeJobs = 0;
+// ---------- the column beside the house (src/column.js; own pane, docs/own-pane.md, 2026-10-26) ----------
+// The right-hand side of the old two-pane page, now part of this page (owner: "split view entfernen, und stattdessen einen
+// als teil der eigenen seite bauen"): the swarm's jobs and seats from this origin (panels/), or a page he shows. No button
+// opens it (owner: "kein button, man muss pepe danach fragen dann macht er es"): asked in the command line he pins the list
+// up ("show jobs", "list the seats"), and his answers show their page in it (a chart, the Sworn site, the burn tracker,
+// an explorer page; owner: foreign pages only "wenn pepe was zeigen will"). "hide the list" or its × closes it.
+// A row clicked in the list: the house follows that job, or moves to that seat; the list marks what the house shows.
+// Inside a foreign page, clicks are the page's own (the old "House follows the explorer" is gone). The swarm build has no
+// column; the local one has no mirrors, so there the answers keep their links and only the list and the charts show.
+const EXPLORER = 'https://explorer.imd.fun';                  // links to it (it refuses frames; the server mirrors it)
+let pickedJob = null;                                         // the job a list row asked for, until followJob takes it
 
-function explorerButton() {
-  const b = $('explorer-btn'), r = $('random-job-btn');
-  b.hidden = !inSplit && (mode !== 'live' || seatId == null || !LOCAL || !splitUp || window.parent !== window);
-  b.textContent = inSplit ? 'Hide explorer' : 'IMD Explorer';
-  r.hidden = !inSplit;
-  $('job-form').hidden = inSplit;                     // the side-by-side page has its own job list
-  $('mode-btn').hidden = inSplit;                     // and its own light / dark switch
-  r.disabled = !activeJobs;
-  r.title = activeJobs ? `Follow one of the ${activeJobs} active job${activeJobs === 1 ? '' : 's'}, picked at random` : 'No active jobs right now';
-}
-
-$('random-job-btn').addEventListener('click', () => { if (inSplit) window.parent.postMessage({ type: 'lcp:randomJob' }, '*'); });
-
-async function probeSplit() {
-  if (LOCAL && window.parent === window) {
-    try { await fetch(SPLIT, { mode: 'no-cors', cache: 'no-store' }); splitUp = true; } catch (e) { splitUp = false; }
+function picked(pick) {
+  if (pick.token) { openToken(pick.token); return; }      // a launch or a holding row: its token view
+  if (pick.job) {
+    if (followed && followed.id === pick.job) return;
+    pickedJob = pick.job; followFromTalk(pick.job);
+    return;
   }
-  explorerButton();
+  if (pick.seat == null) return;
+  if (mode === 'live' && seatId === pick.seat && !followed) return;
+  visit(pick.seat);
+  addDiary(`You picked seat #${pick.seat} from the list beside the house.`);
 }
-probeSplit();
-setInterval(probeSplit, 60000);
 
-$('explorer-btn').addEventListener('click', () => {
-  if (inSplit) { window.parent.postMessage({ type: 'lcp:hideExplorer', hash: location.hash }, '*'); return; }
-  if (!LOCAL) { window.open(EXPLORER + (followed ? '/jobs/' + followed.id : '/agents/' + seatId), '_blank', 'noopener'); return; }
-  const q = new URLSearchParams({ seat: String(seatId) });
-  if (followed) q.set('job', followed.id);
-  location.href = SPLIT + '?' + q;
-});
+// what the house shows, for the list's marked row (a demo seat is none)
+function columnSync() {
+  if (column) column.sync({ seat: mode === 'live' && Number.isInteger(seatId) ? seatId : null, job: followed ? followed.id : null });
+}
 
 // ---------- the job on his whiteboard (2026-10-25; owner: "go with 2", the blueprint on the office wall) ----------
 // The job his seat works on (or the followed one; after the work, the last one) as a small diagram on the whiteboard in
@@ -760,7 +881,7 @@ async function readBoard() {
   let rec = null;
   try {
     if (followed && follower.rec && follower.rec.id === id && follower.rec.steps) rec = follower.rec;
-    else if (RELAY) { const r = await fetch('/proxy/jobs/' + id + '/steps', { cache: 'no-store' }); if (r.ok) rec = await r.json(); }
+    else if (RELAY) { const r = await fetch(proxyUrl('/proxy/jobs/' + id + '/steps'), { cache: 'no-store' }); if (r.ok) rec = await r.json(); }
     else { await swarmJobs.refresh(45000); rec = swarmJobs.record(id); }
   } catch (e) { return; }                              // the board keeps what it shows
   if (!rec || !rec.steps || !rec.steps.length) return;
@@ -823,7 +944,7 @@ function boardSvg(b) {
 const switchable = (x) => x.state === 'working' && x.seat != null && String(x.seat) !== String(seatId) && !x.key.startsWith('answer #');
 
 // switching: follow the board's job at that step (#/job/<id>/step/<key>); the follower shows the seat on it while it
-// runs, and the house moves there (as when the side-by-side page picks a step)
+// runs, and the house moves there (as a pasted step link does)
 function switchTo(key) {
   const b = board.model;
   if (!b) return;
@@ -885,14 +1006,16 @@ canvas.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === 
 // Page commands do what the buttons do, whatever he's busy with. The rest is up to him: while the seat works he
 // refuses (an explorer page he points you to opens anyway), every request stresses him a little (more while he works,
 // less with please, more with insults; it wears off in 15 s steps), and past STRESS.walkout he takes the dog out.
-// Questions he looks up at the machine; a page the explorer shows opens beside him (or the side-by-side page opens).
+// Questions he looks up at the machine; a page the explorer shows opens beside him, in the column (the server's mirror).
 const talkState = { stress: 0, at: 0, history: [], back: 0, market: null, asked: null };
 // the house's own sites; the burn tracker's contract (anyone can send its update) is not deployed yet: null until then
-// the burn tracker's site is a newer one (2026-10-24): named burned-6427.identitymd.eth, on eth.limo, not on sites.imd.fun
-const SITE = { sworn: 'https://swornbyswarm.sites.imd.fun/', burned: 'https://burned-6427.identitymd.eth.limo/' };
+// 2026-10-27 (owner: "do the 2 changes for sworn and burn"): the owner's copies on vibingco.de. Sworn's is a 1:1 copy of
+// the swarm's site; burn.imd.vibingco.de redirects to the burn tracker's newest version (its eth.limo name no longer answers)
+const SITE = { sworn: 'https://sworn.vibingco.de/', burned: 'https://burn.imd.vibingco.de/' };
+const SITE_LABEL = { sworn: 'sworn.vibingco.de', burned: 'burn.imd.vibingco.de' };
 const BURN_TRACKER_CA = null;
 
-// link: {href, label}, a page he found, opened in a new tab (beside him too, in the split view)
+// link: {href, label}, a page he found, opened in a new tab (beside him too, in the column, where it opened there)
 function talkReply(text, who = true, link = null) {
   const p = $('talk-reply');
   p.textContent = '';
@@ -908,7 +1031,7 @@ function talkReply(text, who = true, link = null) {
 
 function talkSay(cmd, text, link = null) {
   talkReply(text, true, link);
-  addDiary(text ? `You: "${cmd}". He: ${text}` : `You: "${cmd}".`);
+  addDiary(text ? `You: "${echo(cmd)}". He: ${text}` : `You: "${echo(cmd)}".`);
 }
 
 function talkContext() {
@@ -925,79 +1048,69 @@ function stressAdd(cost) {
   return talkState.stress;
 }
 
-// a page on explorer.imd.fun beside him: in the side-by-side page, or by opening it; false when neither is there
-// a token page beside him: the split view shows it in the right pane; alone, the house moves into the split view with
-// it (as for explorer pages); without the split view (a hosted copy) this page's own pane shows it. Returns where it
-// is, for his answer ('on the right', 'below'), or false (his answer still carries the link).
-function openMarket(url) {
-  if (!url) return false;
-  if (inSplit) { window.parent.postMessage({ type: 'lcp:market', url }, '*'); return 'on the right'; }
-  if (LOCAL && splitUp && window.parent === window && mode === 'live' && seatId != null) {
-    const q = new URLSearchParams({ seat: String(seatId), mk: url });
-    if (followed) q.set('job', followed.id);
-    setTimeout(() => { location.href = SPLIT + '?' + q; }, 2500);      // a moment longer: his answer has numbers
-    return 'on the right';
-  }
-  return showPane(url);
+// a page beside him, in the column: one of the house's sites or an explorer page (the server's mirrors: the real ones
+// refuse frames), or a token's own pool (column.showToken, the token panel). Returns where it opened, for his answer
+// ('on the right', or 'below' under the house on a phone), or false: no column (the swarm build) or no mirror (the local
+// build); his answer carries the link then.
+const shownWhere = () => (WIDE.matches ? 'on the right' : 'below');
+const PANEL = !!column && FEATURES.marketPane;                // the token panel (server, local); the swarm build: links
+function openToken(ca) {
+  if (!PANEL) return false;
+  column.showToken(ca);
+  return shownWhere();
+}
+// a token that is no swarm launch: defined.fi (with the ref) in a new tab (owner: "should open the defined.fi link instead
+// in a new tab"). 'tab', or 'blocked' when the browser refuses it (his answer is async, after the walk to the machine);
+// his answer links it either way. Not window.open(url, '_blank', 'noopener'): with 'noopener' it returns null even when the
+// tab opened, so a block could not be told; the opener is cut by hand instead, as for Etherscan (burnTalk).
+function newTab(url) {
+  if (!PANEL || !DEFINED_URL.test(url)) return false;
+  let tab = null;
+  try { tab = window.open(url, '_blank'); if (tab) tab.opener = null; } catch (e) { /* blocked */ }
+  return tab ? 'tab' : 'blocked';
 }
 
-// this page's own pane: only the shapes the side-by-side page accepts too (defined.fi with the ref code, LlamaSwap)
-const WIDE_PANE = matchMedia('(min-width: 1500px)');
-function showPane(url) {
-  const name = DEFINED_URL.test(url) ? 'defined.fi' : LLAMA_URL.test(url) ? 'LlamaSwap' : null;
-  if (!name || !FEATURES.marketPane) return false;
-  paneFrame().src = url; $('pane-name').textContent = name; $('pane-open').href = url; $('pane-open').title = 'Open this page on ' + name;
-  $('pane').hidden = false; document.body.classList.add('with-pane');
-  fit();                                                     // the house takes the width that is left
-  return WIDE_PANE.matches ? 'on the right' : 'below';
-}
-// the frame exists only once the pane shows a page: with the feature off the page has no iframe at all
-function paneFrame() {
-  let f = $('pane-frame');
-  if (f) return f;
-  f = document.createElement('iframe');
-  f.id = 'pane-frame'; f.title = 'A page he opened'; f.referrerPolicy = 'strict-origin-when-cross-origin';
-  f.allow = 'clipboard-write';
-  f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals');
-  $('pane').append(f);
-  return f;
-}
-$('pane-close').addEventListener('click', () => {
-  $('pane').hidden = true; if ($('pane-frame')) $('pane-frame').src = 'about:blank'; document.body.classList.remove('with-pane');
-  fit();
-});
-
-// one of the house's sites beside him (the split view passes it through, wallets off), or the split view with it
-function openSite(key) {
-  if (inSplit) { window.parent.postMessage({ type: 'lcp:site', site: key }, '*'); return true; }
-  if (splitUp && window.parent === window && mode === 'live' && seatId != null) {
-    const q = new URLSearchParams({ seat: String(seatId), site: key });
-    if (followed) q.set('job', followed.id);
-    setTimeout(() => { location.href = SPLIT + '?' + q; }, 4000);      // his answer is long: time to read it first
-    return true;
-  }
-  return false;
+// '0x' (2026-10-28, owner: "remove the TXT from the OXTXT labels and titles, and render the 0 before the X in dark grey so its only
+// barely visible"): its name is 0x, the 0 faint (SITE_FAINT: how many leading characters)
+const SITE_NAME = { sworn: 'Sworn', burned: 'The burn tracker', '0x': '0x' };
+const SITE_FAINT = { '0x': 1 };
+// path: a page of the site (0xTXT's /surf or /wallet/<who>); the head's "open" is the real site, or the page itself where the
+// site has no public home (0xTXT, 2026-10-27)
+function openSite(key, path = '/') {
+  if (!column || !MIRRORS || !MIRRORS[key]) return false;
+  column.showPage({ url: MIRRORS[key] + path, name: SITE_NAME[key], open: SITE[key] || MIRRORS[key] + path, faint: SITE_FAINT[key] || 0 });
+  return shownWhere();
 }
 
 const explorerLink = (path) => ({ href: EXPLORER + path, label: 'explorer.imd.fun' + path });
 
-function openExplorer(path) {
-  if (!path) return false;
-  if (inSplit) { window.parent.postMessage({ type: 'lcp:explore', path }, '*'); return true; }
-  if (splitUp && window.parent === window && mode === 'live' && seatId != null) {
-    const q = new URLSearchParams({ seat: String(seatId), ex: path });
-    if (followed) q.set('job', followed.id);
-    setTimeout(() => { location.href = SPLIT + '?' + q; }, 1800);      // a moment to read his answer first
-    return true;
-  }
+// a page he would point to on the explorer, opened in the column's own panels where they show it (2026-10-28, owner: "when pepes
+// working he still opens the old job and launch links, when asked about jobs or tokens, he should open them in new panel view
+// instead"): a job in Jobs, opened; the jobs, the swarm and inference in Jobs; tokens and launches in Launches; oracles in
+// Oracles; an agent in Seats, opened; the agents in Seats. Where, or false; the rest (heartbeats, companies, parts) stays on the
+// explorer (openAnswer)
+const PANEL_OF = { '/': 'jobs', '/tokens': 'launches', '/oracle': 'oracles', '/agents': 'seats', '/agents?show=working': 'seats' };
+function openPanelFor(path) {
+  if (!column || !path) return false;
+  let m;
+  if ((m = /^\/jobs\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(path))) { column.showJob(m[1]); return shownWhere(); }
+  if ((m = /^\/agents\/(\d{1,4})$/.exec(path)) && Number(m[1]) < 2000) { column.showSeat(Number(m[1])); return shownWhere(); }
+  if (PANEL_OF[path]) { column.showList(PANEL_OF[path]); return shownWhere(); }
   return false;
+}
+const openAnswer = (path) => openPanelFor(path) || openExplorer(path);
+
+function openExplorer(path) {
+  if (!path || !column || !MIRRORS || !MIRRORS.explorer) return false;
+  column.showPage({ url: MIRRORS.explorer + path, name: 'explorer.imd.fun' + (path === '/' ? '' : path), open: EXPLORER + path });
+  return shownWhere();
 }
 
 // the active jobs: locally the relay's list (every job not over among the newest 200), hosted the ones /swarm's events
 // show plus the oracle questions still being answered; null when neither answers
 async function activeJobList() {
   if (RELAY) {
-    try { const r = await fetch('/proxy/jobs/active', { cache: 'no-store' }); if (r.ok) return (await r.json()).jobs || []; } catch (e) { /* no relay */ }
+    try { const r = await fetch(proxyUrl('/proxy/jobs/active'), { cache: 'no-store' }); if (r.ok) return (await r.json()).jobs || []; } catch (e) { /* no relay */ }
     return null;
   }
   try { await swarmJobs.refresh(45000); } catch (e) { /* the oracle list may still answer */ }
@@ -1007,7 +1120,7 @@ async function activeJobList() {
 
 // ---------- following a job picked from the active ones (2026-10-25) ----------
 // The list under the seat row, read every 30 s; rebuilt only when it changed and the visitor is not choosing from it.
-// The followed job stays in it. Inside the side-by-side page its own list is used instead.
+// The followed job stays in it.
 let jobList = [], jobListKey = null;                 // null: nothing shown yet (an empty list has the key '')
 
 function jobLabel(j) {
@@ -1049,11 +1162,10 @@ async function resolveJob(id) {
   return hit.length === 1 ? hit[0].id : null;
 }
 
-// following a job from the command line: what the buttons do (the side-by-side page shows it too); step: a step key to
-// show while it runs (a pasted #/job/<id>/step/<key> link)
+// following a job from the command line or the list beside the house: what the buttons do; step: a step key to show
+// while it runs (a pasted #/job/<id>/step/<key> link)
 function followFromTalk(id, step = null) {
-  if (inSplit) window.parent.postMessage({ type: 'lcp:followJob', id }, '*');
-  else location.hash = '#/job/' + id + (step ? '/step/' + encodeURIComponent(step) : '');
+  location.hash = '#/job/' + id + (step ? '/step/' + encodeURIComponent(step) : '');
 }
 
 // is a job (or an oracle question's job) still running? {id, state, active, objective}, or null when nothing here can
@@ -1063,7 +1175,7 @@ const JOB_OVER = ['completed', 'blocked', 'failed', 'cancelled'], ORACLE_RUNS = 
 async function jobActivity(id, oracle = false) {
   if (!oracle && RELAY) {
     try {
-      const r = await fetch('/proxy/jobs/' + id + '/steps', { cache: 'no-store' });
+      const r = await fetch(proxyUrl('/proxy/jobs/' + id + '/steps'), { cache: 'no-store' });
       if (r.ok) { const j = await r.json(); if (j && j.state) return { id, state: j.state, active: !JOB_OVER.includes(j.state), objective: j.objective || '' }; }
     } catch (e) { /* not a job the relay can read */ }
   } else if (!oracle) {
@@ -1081,24 +1193,82 @@ async function jobActivity(id, oracle = false) {
 }
 
 async function pageCommand(it, cmd) {
-  const say = (text) => { talkReply(text); addDiary(`You: "${cmd}". ${text}`); };
+  const say = (text) => { talkReply(text); addDiary(`You: "${echo(cmd)}". ${text}`); };
   switch (it.act) {
     case 'help': talkReply(HELP, false); return;
     case 'visit': visit(it.seat); say(`Seat #${it.seat}. You moved, I didn't.`); return;
     case 'random': await randomBusySeat(); talkReply('A random busy seat. Same face, different bags.'); return;
     case 'demo': $('demo-btn').click(); talkReply(mode === 'demo' ? 'The demo: a made-up seat. Like most roadmaps.' : 'Back to a real seat.'); return;
-    case 'sound': if (sound.on !== it.on) $('sound-btn').click(); say(it.on ? 'Sound on. Hope you like beeps.' : 'Sound off. Finally.'); return;
-    case 'legend': $('legend-btn').click(); return;
-    case 'hideExplorer':
-      if (inSplit) $('explorer-btn').click(); else say('There\'s no explorer to hide, ser.');
+    case 'sound': setSound(it.on); say(it.on ? 'Sound on. Hope you like beeps.' : 'Sound off. Finally.'); return;
+    case 'mode': {                                       // light or dark (2026-10-27: the frog's menu has the switch too)
+      const was = document.documentElement.dataset.mode;
+      setMode(it.mode, true);
+      say(was === it.mode ? SCREEN.modeAlready(it.mode) : SCREEN.mode[it.mode]);
       return;
-    case 'showExplorer':
-      if (inSplit) say('It\'s right there. Next to me. On the right.');
-      else if (!$('explorer-btn').hidden) $('explorer-btn').click();
-      else say('No explorer here: the side-by-side page isn\'t running (tools/side-by-side).');
+    }
+    case 'fullscreen': {                                 // the house in full screen (2026-10-27, src/full.js)
+      if (!it.on) { say(full.leave() ? SCREEN.left : SCREEN.notOn); return; }
+      if (full.on) { say(SCREEN.already); return; }
+      say(SCREEN.on[full.enter()]);
+      return;
+    }
+    case 'legend': $('legend-btn').click(); return;
+    case 'showList': {                                   // the column beside the house: only when asked (2026-10-26)
+      const seats = it.view === 'seats';
+      if (it.view === 'oracles') {                        // the oracle questions and research panels (job-detail-oracles, 2026-10-26)
+        if (!column) {
+          talkSay(cmd, 'The oracle list lives in the self-hosted copy of this house; here I only get the swarm\'s live feed. The explorer has every question:', explorerLink('/oracle'));
+          return;
+        }
+        if (house && mode === 'live') house.event({ type: 'board' });   // he walks to his whiteboard, as for the other lists
+        column.showList('oracles');
+        talkReply(`The oracle questions, ${shownWhere()}, research panels too. Click one and its panel opens as a hive; click an agent in it and I go there.`);
+        addDiary(`You: "${echo(cmd)}". He pins the swarm's oracle questions up beside the house.`);
+        return;
+      }
+      if (it.view === 'launches') {                       // every swarm launch (launches-portfolio, 2026-10-26)
+        if (!column) { talkSay(cmd, WALLET.swarmLaunches, explorerLink('/tokens')); return; }
+        if (house && mode === 'live') house.event({ type: 'board' });
+        column.showList('launches');
+        talkReply(WALLET.launches(shownWhere()));
+        addDiary(`You: "${echo(cmd)}". He pins the swarm's launches up beside the house.`);
+        return;
+      }
+      if (!column) {
+        talkSay(cmd, `The ${seats ? 'seats' : 'jobs'} list lives in the self-hosted copy of this house; here I only get the swarm's live feed. The explorer has ${seats ? 'them' : 'every job'}:`,
+          explorerLink(seats ? '/agents' : '/'));
+        return;
+      }
+      if (house && mode === 'live') house.event({ type: 'board' });   // he walks to his whiteboard
+      column.showList(seats ? 'seats' : 'jobs');
+      talkReply(seats ? `The seats, ${shownWhere()}. Online first. Mine's in there somewhere.` : `The swarm's jobs, ${shownWhere()}. Click one and I follow it.`);
+      addDiary(`You: "${echo(cmd)}". He pins the swarm's ${seats ? 'seats' : 'jobs'} up beside the house.`);
+      return;
+    }
+    case 'setWallet': return walletTalk(it.value, cmd);
+    case 'forgetWallet': {
+      if (!column) { talkSay(cmd, WALLET.swarm); return; }
+      const had = visitorWallet || storedWallet();
+      if (!had) { talkSay(cmd, WALLET.none); return; }
+      keepWallet(null);
+      talkSay(cmd, WALLET.forgot(shortAddr(had)));
+      return;
+    }
+    case 'showPortfolio': {
+      if (!column) { talkSay(cmd, WALLET.swarm); return; }
+      if (it.value) return walletTalk(it.value, cmd, true);    // "whats my portfolio ? 0x…" (2026-10-27): told and shown at once
+      if (!visitorWallet) { talkSay(cmd, WALLET.ask); return; }
+      portfolioUp(cmd);
+      return;
+    }
+    case 'hideList':
+      if (column && column.open) { column.hide(); say('Down it comes. Just the house again.'); } else say('Nothing beside me to close, ser.');
+      return;
+    case 'explorer':                                     // explorer.imd.fun's front page: on the server its mirror
+      if (openExplorer('/')) { say(`The explorer, ${shownWhere()}. For the jobs and the seats in my own list: show jobs.`); return; }
+      talkSay(cmd, column ? 'No explorer beside me here, ser. Ask me for the jobs or the seats and I pin them up. The explorer itself:' : 'No explorer beside me here, ser. Just the house. The explorer itself:', explorerLink('/'));
       return;
     case 'randomJob': {
-      if (inSplit) { $('random-job-btn').click(); say('A random active job. Strap in.'); return; }
       const list = await activeJobList();
       if (!list) { say(RELAY ? 'Can\'t list the jobs without the local relay.' : 'Can\'t read the swarm\'s jobs right now.'); return; }
       if (!list.length) { say('No active jobs. The swarm is touching grass.'); return; }
@@ -1109,8 +1279,9 @@ async function pageCommand(it, cmd) {
       const r = await jobActivity(it.job, it.oracle);
       const name = (o) => { const t = (o || '').replace(/\s+/g, ' ').trim(); return t ? ` ("${t.length > 60 ? t.slice(0, 59) + '…' : t}")` : ''; };
       if (r && !r.active) {
-        talkSay(cmd, `${r.oracle ? 'That oracle question' : 'Job ' + r.id.slice(0, 8)} is already ${r.state}${name(r.objective)}. Nothing left to follow. Its page:`,
-          explorerLink('/jobs/' + r.id));
+        const where = openPanelFor('/jobs/' + r.id);
+        talkSay(cmd, `${r.oracle ? 'That oracle question' : 'Job ' + r.id.slice(0, 8)} is already ${r.state}${name(r.objective)}. Nothing left to follow. ${where ? `Its page is ${where}.` : 'Its page:'}`,
+          where ? null : explorerLink('/jobs/' + r.id));
         return;
       }
       if (!r && RELAY) { say(`No job or oracle question ${it.job.slice(0, 8)} that I can find. Typo?`); return; }
@@ -1130,16 +1301,71 @@ async function pageCommand(it, cmd) {
   }
 }
 
+// "my wallet is …": an address is kept as it is; a name.eth goes to the server's /proxy/panels/resolve first (a forward
+// lookup the mainnet registry answers directly; 404 for anything else, offchain names included). The diary gets his line
+// (the address shortened), never what was typed.
+// the visitor's portfolio in the column (lead: what he says before it, e.g. that he noted the wallet)
+function portfolioUp(cmd, lead = '') {
+  if (house && mode === 'live') house.event({ type: 'board' });   // he walks to his whiteboard, as for the lists
+  column.showList('portfolio');
+  talkReply(lead + WALLET.portfolio(shortAddr(visitorWallet), shownWhere()));
+  addDiary(`You: "${echo(cmd)}". He pins up what ${shortAddr(visitorWallet)} holds beside the house.`);
+}
+
+// show: a portfolio was asked for with the wallet in the same line; once it is known, the portfolio goes up
+async function walletTalk(raw, cmd, show = false) {
+  const told = (text) => { talkReply(text); addDiary(`You told him a wallet. He: ${text}`); };
+  if (!column) { told(WALLET.swarm); return; }
+  const v = String(raw || '').toLowerCase().replace(/[.?!,;]+$/, '');
+  const noted = (w, name) => {
+    keepWallet(w);
+    if (show) { portfolioUp(cmd, WALLET.noted(shortAddr(w), name) + ' '); return; }
+    told(WALLET.noted(shortAddr(w), name) + (column.open ? WALLET.tab(shownWhere()) : WALLET.hint));
+  };
+  if (WALLET_RE.test(v)) { noted(v, null); return; }
+  if (!/\.eth$/.test(v)) { told(WALLET.bad); return; }
+  if (!ENS_NAME(v)) { told(WALLET.badName(v.slice(0, 64))); return; }
+  talkReply(WALLET.lookup(v));
+  let r = null, d = null;
+  try {
+    r = await fetch(proxyUrl('/proxy/panels/resolve?name=' + encodeURIComponent(v)), { cache: 'no-store' });
+    d = await r.json().catch(() => null);
+  } catch (e) { /* no relay */ }
+  if (r && r.ok && d && WALLET_RE.test(String(d.address || '').toLowerCase())) { noted(String(d.address).toLowerCase(), v); return; }
+  if (r && (r.status === 429 || (r.ok && d && d.busy))) { told(WALLET.busy); return; }
+  if (r && r.status === 404 && d && d.error) { told(WALLET.noName(v)); return; }
+  if (r && r.status === 400) { told(WALLET.badName(v)); return; }
+  told(WALLET.down);
+}
+
+// 0xTXT (2026-10-27): Agent Surf's feed, or a wallet's posts. Its /wallet/<x> route takes an address only, so a name.eth goes
+// through the server's resolver first (as "my wallet is …"); a name it cannot read opens the lookup page instead
+async function oxtxtTalk(it, cmd) {
+  house.event({ type: 'flash', icon: 'dots' });
+  const v = String(it.who || '').toLowerCase().replace(/[.?!,;]+$/, '');
+  if (!v) return talkSay(cmd, `${pick(OXTXT.lead)} ${OXTXT.note(openSite('0x', '/surf'), null)}`);
+  let addr = WALLET_RE.test(v) ? v : null;
+  if (!addr && column && ENS_NAME(v)) {
+    try {
+      const r = await fetch(proxyUrl('/proxy/panels/resolve?name=' + encodeURIComponent(v)), { cache: 'no-store' });
+      const d = r.ok ? await r.json().catch(() => null) : null;
+      if (d && WALLET_RE.test(String(d.address || '').toLowerCase())) addr = String(d.address).toLowerCase();
+    } catch (e) { /* no relay: the lookup page */ }
+  }
+  if (!addr) return talkSay(cmd, OXTXT.noName(v.slice(0, 64), openSite('0x', '/wallet')));
+  return talkSay(cmd, `${pick(OXTXT.walletLead)} ${OXTXT.note(openSite('0x', '/wallet/' + addr), v)}`);
+}
+
 function egg(it, cmd, grumble) {
   if (it.act === 'trade') {
     house.event({ type: 'command', act: 'trade', done: () => talkSay(cmd, pick(EGG.tradeAfter)) });
     talkSay(cmd, pick(EGG.trade)); return;
   }
-  if (it.act === 'buy') {
-    const url = swapUrl(IMD_CA, 'ethereum', 'buy');
+  if (it.act === 'buy') {                                // no swap (2026-10-26): he runs, IMD's pool opens, defined.fi linked
+    const url = chartUrl(IMD_CA, 'ethereum', IMD_POOL);
     house.event({ type: 'command', act: 'buy', done: () => {
-      const where = openMarket(url);
-      talkSay(cmd, pick(EGG.buyAfter) + (where ? ` LlamaSwap is open ${where}, ETH to IMD.` : ' Here\'s LlamaSwap, ETH to IMD:'), { href: url, label: 'LlamaSwap' });
+      const where = openToken(IMD_CA);
+      talkSay(cmd, pick(EGG.buyAfter) + (where ? ` IMD's pool is ${where}; defined.fi has the rest:` : ' IMD on defined.fi:'), { href: url, label: 'defined.fi' });
     } });
     talkSay(cmd, pick(EGG.buy)); return;
   }
@@ -1150,22 +1376,31 @@ function egg(it, cmd, grumble) {
   talkSay(cmd, pick(EGG[it.act] || UNKNOWN) + (it.act === 'thanks' ? '' : grumble));
 }
 
+// one line counted on the server (selfhost/talkcount.py): its kind and its act or topic, nothing the visitor typed, no wallet,
+// no seat. Best effort: a beacon, no answer read
+function countTalk(it) {
+  if (!FEATURES.talkCounts || typeof navigator === 'undefined' || !navigator.sendBeacon) return;
+  const s = it.kind === 'confirm' ? (it.yes ? 'yes' : 'no') : it.act || it.topic || null;
+  try { navigator.sendBeacon(proxyUrl('/proxy/talk'), JSON.stringify({ k: it.kind, s: typeof s === 'string' ? s : null })); } catch (e) { /* not counted */ }
+}
+
 async function talk(raw) {
   const cmd = String(raw || '').trim().slice(0, 160);
   if (!cmd) return;
   talkState.history.push(cmd); talkState.back = 0;
   const it = parse(cmd);
+  countTalk(it);
   if (it.kind === 'page') return pageCommand(it, cmd);
   if (!house) { talkReply('Nobody lives here yet. Pick a seat first.'); return; }
   const s = house.state;
   if (it.kind === 'radio') return radioTalk(it, cmd, s);          // the radio works whatever he does (page-like)
   if (house.walkout) return talkSay(cmd, pick(OUT));
   if (s.away) return talkSay(cmd, AWAY);
-  if (it.kind === 'egg' && it.act === 'sell') { talkReply(null); addDiary(`You: "${cmd}".`); return; }   // he doesn't even look up
+  if (it.kind === 'egg' && it.act === 'sell') { talkReply(null); addDiary(`You: "${echo(cmd)}".`); return; }   // he doesn't even look up
   if (s.asleep) return talkSay(cmd, pick(ASLEEP));
   if (it.kind === 'confirm') return confirmTalk(it, cmd);
-  // IMD, Sworn and the burns: he drops everything
-  const busy = s.working && !(it.kind === 'egg' && it.act === 'buy') && it.kind !== 'sworn' && it.kind !== 'burn';
+  // IMD, Sworn and the burns: he drops everything; so does a question about the swarm itself (the docs' answer)
+  const busy = s.working && !(it.kind === 'egg' && it.act === 'buy') && !['sworn', 'burn', 'oxtxt', 'showcase', 'changelog', 'faq'].includes(it.kind);
   const lvl = stressAdd(stressCost(it, busy));
   if (lvl >= STRESS.walkout) {
     talkState.stress = 0;
@@ -1176,13 +1411,21 @@ async function talk(raw) {
   if (it.kind === 'sworn') {
     house.event({ type: 'flash', icon: 'heart' });
     const beside = openSite('sworn');
-    return talkSay(cmd, `${pick(SWORN.lead[it.alpha ? 'alpha' : 'nft'])} ${SWORN.eli5} ${SWORN.mint(beside)}`, { href: SITE.sworn, label: 'swornbyswarm.sites.imd.fun' });
+    return talkSay(cmd, `${pick(SWORN.lead[it.alpha ? 'alpha' : 'nft'])} ${SWORN.eli5} ${SWORN.mint(beside)}`, { href: SITE.sworn, label: SITE_LABEL.sworn });
   }
+  if (it.kind === 'oxtxt') return oxtxtTalk(it, cmd);
+  if (it.kind === 'changelog') { openChangelog(); return talkSay(cmd, SHOW.changelog); }
+  if (it.kind === 'faq') {
+    const f = FAQ[it.topic];
+    house.event({ type: 'flash', icon: 'dots' });
+    return talkSay(cmd, f.text, { href: f.href, label: f.label });
+  }
+  if (it.kind === 'showcase') return showcaseTalk(it, cmd);
   if (it.kind === 'burn') {
     house.event(s.working ? { type: 'flash', icon: 'dots' } : { type: 'command', act: 'fire' });   // he lights the fire
     const beside = openSite('burned');
     talkState.asked = { what: 'burnUpdate', at: Date.now() };
-    return talkSay(cmd, `${pick(BURN.lead)} ${BURN.note(beside)}`, { href: SITE.burned, label: 'burned-6427.identitymd.eth.limo' });
+    return talkSay(cmd, `${pick(BURN.lead)} ${BURN.note(beside)}`, { href: SITE.burned, label: SITE_LABEL.burned });
   }
   if (busy) {
     const tier = lvl >= STRESS.warn ? 2 : lvl >= STRESS.grumpy ? 1 : 0;
@@ -1192,7 +1435,9 @@ async function talk(raw) {
     if (it.kind === 'news') return talkSay(cmd, text + ' ' + NEWS.busy, { href: DAILY.site, label: 'The IMD Daily' });
     if (it.kind === 'ask') {
       const a = answer(it, talkContext());
-      if (a.explorer && openExplorer(a.explorer)) text += ' Look it up yourself, it\'s on the explorer.';
+      const where = a.explorer && openPanelFor(a.explorer);
+      if (where) text += ` Look it up yourself, it's ${where}.`;
+      else if (a.explorer && openExplorer(a.explorer)) text += ' Look it up yourself, it\'s on the explorer.';
       else if (a.explorer) { text += ' Look it up yourself:'; link = explorerLink(a.explorer); }
     }
     return talkSay(cmd, text, link);
@@ -1204,7 +1449,7 @@ async function talk(raw) {
     if (house !== asked) return;                       // another seat by now: this pepe wasn't asked
     talkReply(LOOKUP, false);
     house.event({ type: 'command', act: 'lookup', done: () => {
-      const a = answer(it, talkContext()), opened = !!a.explorer && openExplorer(a.explorer);
+      const a = answer(it, talkContext()), opened = !!a.explorer && openAnswer(a.explorer);
       talkSay(cmd, a.text + grumble, a.explorer && !opened ? explorerLink(a.explorer) : null);
     } });
     return;
@@ -1213,6 +1458,10 @@ async function talk(raw) {
   if (it.kind === 'do') { house.event({ type: 'command', act: it.act }); return talkSay(cmd, DO[it.act] + grumble); }
   if (it.kind === 'egg') return egg(it, cmd, grumble);
   house.event({ type: 'flash', icon: 'ask' });
+  if (it.kind === 'suggest') {                           // a typo: he asks, a yes runs the line he guessed (confirmTalk)
+    talkState.asked = { what: 'suggest', line: it.line, at: Date.now() };
+    return talkSay(cmd, SUGGEST.ask(it.line));
+  }
   return talkSay(cmd, pick(UNKNOWN));
 }
 
@@ -1252,16 +1501,21 @@ function radioTalk(it, cmd, s) {
     }
     case 'list': return say(RADIO.stations(STATIONS, radio.live ? radio.key : null));
     case 'genre': house.event({ type: 'flash', icon: 'dots' }); return say(RADIO.genre(it.genre), chart(st));
-    case 'request': house.event({ type: 'flash', icon: 'dots' }); return say(RADIO.request, st.chainId === 1 ? { href: swapUrl(st.token, 'ethereum', 'buy'), label: 'LlamaSwap' } : chart(st));
+    case 'request': house.event({ type: 'flash', icon: 'dots' }); return say(RADIO.request, chart(st));
     default: return say(pick(UNKNOWN));
   }
 }
+// the radio on or off as the visitor asks (the hidden Radio button, the frog's menu: Music): he walks to the record player
+// and the music follows when he gets there
+function radioWalk(act) { if (house) house.event({ type: 'radio', act, done: () => radio.sync() }); else radio.sync(); }
+function toggleRadio() {
+  if (!FEATURES.radio) return;
+  radio.setOn(!radio.on, true); radioWalk(radio.on ? 'tune' : 'off');
+  if (house) addDiary(radio.on ? `Radio on: ${radio.label()}.` : 'Radio off.');
+}
 if (FEATURES.radio) {
-  const walk = (act) => (house ? house.event({ type: 'radio', act, done: () => radio.sync() }) : radio.sync());
-  $('radio-btn').addEventListener('click', () => {
-    radio.setOn(!radio.on, true); walk(radio.on ? 'tune' : 'off');
-    if (house) addDiary(radio.on ? `Radio on: ${radio.label()}.` : 'Radio off.');
-  });
+  const walk = radioWalk;
+  $('radio-btn').addEventListener('click', toggleRadio);
   // the record cabinet on the canvas (world units: 264..292 x 183..208): a sleeve puts that station on, the player toggles
   const cabinetHit = (e) => {
     const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) * 480 / r.width, y = (e.clientY - r.top) * 320 / r.height;
@@ -1330,6 +1584,11 @@ const feedReading = () => ({ rate: radioRate, stage: radioStage, lastAt: station
 if (FEATURES.radio) {
   canvas.addEventListener('click', (e) => {
     if (!onPanel(e)) return;
+    if (!radioGrid) {                                  // a station without a hook: the panel shows the hooked one's pattern
+      stationPop.open(HOOKED, hookGrid, {});
+      addDiary(`You tapped the panel over the piano: ${radio.station.label} has no hook to hold a pattern, so it shows ${HOOKED.label}'s.`);
+      return;
+    }
     stationPop.open(radio.station, radioGrid, feedReading());
     addDiary(`You tapped the panel over the piano: ${radio.station.label}, as its hook holds it.`);
   });
@@ -1350,6 +1609,145 @@ if (FEATURES.sworn) {
   });
   canvas.addEventListener('mousemove', (e) => { if (onSworn(e)) canvas.style.cursor = 'pointer'; });
 }
+
+// ---------- the showcase (2026-10-28, owner: "some more actions to add"; showcase.js, brain.js showEvent) ----------
+// The server's /proxy/showcase every 30 s: the swarm's new video plays on the TV while he watches, new audio on the record
+// player (the radio held meanwhile), a new site on his machine's screen for a while, new art on the easel; the BurnExecutor's
+// box goes into the fire and he thanks the sender; Agent Surf's new message is towed past by a plane. Each can be clicked
+// while it shows (owner: "all can be clicked and opened in the explorer if possible if not in a new window"): a job opens in
+// the explorer in the column (else a new tab), a burn on Etherscan in a new tab, the plane's message in the 0xTXT pane; the
+// surfboard over the bed opens Agent Surf's feed.
+const showTitle = (t) => (t && String(t).trim()) || 'untitled';
+const imdAmount = (v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
+// Music (2026-10-28, owner): every sound from outside the house, the radio, the swarm's audio, a video's own sound
+const musicOn = () => !!(FEATURES.radio && radio.on);
+function stopVideo() { dropMedia(tvVideo); tvVideo = null; showing.video = null; if (house) house.state.tvVideo = null; if (FEATURES.radio) radio.release('showcase'); }
+function stopAudio() { dropMedia(showAudio); showAudio = null; showing.audio = null; if (FEATURES.radio) radio.release('showcase'); }
+function stopSite() { if (siteEl) siteEl.remove(); siteEl = null; showing.site = null; }
+// a new house (another seat, the demo): nothing keeps playing for the old one; the easel keeps the newest picture
+function showReset() { stopVideo(); stopAudio(); stopSite(); burnShown = null; if (house && lastArt) house.state.easelArt = lastArt; }
+function loadArt(item, then) {
+  const img = new Image();
+  img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
+  img.onload = () => { lastArt = { img, item }; if (house) house.state.easelArt = lastArt; if (then) then(lastArt); };
+  img.src = item.url;
+}
+function openTab(url) { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (e) { /* blocked */ } }
+// one item of the snapshot, acted out; asked: the visitor asked for it (his line comes from showcaseTalk)
+function showItem({ kind, item }, asked = false) {
+  if (!house || !FEATURES.showcase) return;
+  const t = showTitle(item.title);
+  if (kind === 'video') {
+    house.event({ type: 'show', kind, item, seconds: VIDEO_S, stop: stopVideo, ended: () => !tvVideo || tvVideo.ended || !!tvVideo.error,
+      start: () => {
+        stopVideo(); const heard = musicOn();
+        tvVideo = videoEl(document, item.url, heard); house.state.tvVideo = tvVideo; showing.video = item;
+        if (heard) radio.hold('showcase');                                  // its own sound instead of the station
+        const v = tvVideo;
+        v.play().catch(() => { if (v === tvVideo && !v.muted) { v.muted = true; v.play().catch(() => {}); } });   // no click yet: muted
+      } });
+    if (!asked) addDiary(`A new video from the swarm: ${t}. He watches it on the TV.`);
+  } else if (kind === 'audio') {
+    // nothing to hear (the sound off, or the browser refused): he stands at the player a short while only
+    house.event({ type: 'show', kind, item, seconds: AUDIO_S, stop: stopAudio,
+      ended: () => (showAudio && !showAudio.paused ? showAudio.ended || !!showAudio.error : Date.now() - audioAt > 12000),
+      start: () => {
+        stopAudio(); showing.audio = item; audioAt = Date.now();
+        if (FEATURES.radio) radio.hold('showcase');
+        if (musicOn()) { showAudio = new Audio(item.url); showAudio.volume = 0.8; showAudio.play().catch(() => {}); }
+      } });
+    if (!asked) addDiary(`New audio from the swarm: ${t}. He puts it on the record player${musicOn() ? '' : ' (the music is off)'}.`);
+  } else if (kind === 'site') {
+    house.event({ type: 'show', kind, item, host: item.host, seconds: SITE_S, stop: stopSite,
+      start: () => { stopSite(); showing.site = item; if (item.url && theme.id === 'imd') siteEl = siteOverlay(document, canvas, THINGS.screen, item.url); } });
+    if (!asked) addDiary(`A new site from the swarm: ${t}${item.host ? ` (${item.host})` : ''}. It shows on his machine for a while.`);
+  } else if (kind === 'art') {
+    loadArt(item, (art) => { if (house) house.event({ type: 'show', kind: 'art', art, item }); });
+    if (!asked) addDiary(`New art from the swarm: ${t}. It goes on the easel.`);
+  } else if (kind === 'burn') {
+    burnShown = item;
+    const who = item.name || shortAddr(item.from), imd = imdAmount(item.imd);
+    house.event({ type: 'show', kind, item, done: () => {
+      talkReply(SHOW.burn(imd, who), true, { href: item.etherscan, label: 'Etherscan' });
+      addDiary(`A box from the BurnExecutor came to the door and he threw it into the fire: ${imd} IMD burned, sent by ${who}.`);
+      setTimeout(() => { if (burnShown === item) burnShown = null; }, 20000);
+    } });
+  } else if (kind === 'plane') {
+    house.event({ type: 'show', kind, text: item.text, tx: item.tx, seconds: PLANE_S });
+    if (!asked) addDiary(`A plane tows Agent #0's new message past the house: "${item.text}"`);
+  }
+}
+// "latest video", "last burn" …: the newest of that kind again
+function showcaseTalk(it, cmd) {
+  if (!FEATURES.showcase || !showFeed) return talkSay(cmd, SHOW.off);
+  const x = showFeed.latest(it.what);
+  if (!x) return talkSay(cmd, SHOW.none[it.what] || 'Nothing like that yet.');
+  showItem(x, true);
+  const t = showTitle(x.item.title);
+  const line = { video: SHOW.video(t), audio: SHOW.audio(t, musicOn()), site: SHOW.site(t), art: SHOW.art(t), plane: SHOW.plane(x.item.text) }[it.what];
+  if (line) talkSay(cmd, line, x.item.explorer ? { href: x.item.explorer, label: 'its job' } : null);
+  else addDiary(`You: "${echo(cmd)}". He fetches the last box from the BurnExecutor again.`);
+}
+const worldOf = (e) => { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * 480 / r.width, y: (e.clientY - r.top) * 320 / r.height }; };
+const inBox = (p, b) => !!b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+function showSpot(e) {
+  if (!house || !FEATURES.showcase || theme.id !== 'imd') return null;
+  const p = worldOf(e), s = house.state;
+  if (s.plane && s.plane.tx && inBox(p, s.plane.box)) return { open: 'post', tx: s.plane.tx };
+  if (showing.video && inBox(p, SHOW_SPOTS.tv)) return { open: 'job', item: showing.video };
+  if (showing.audio && inBox(p, SHOW_SPOTS.records)) return { open: 'job', item: showing.audio };
+  if (showing.site && inBox(p, SHOW_SPOTS.screen)) return { open: 'site', item: showing.site };
+  if (s.easelArt && s.easelArt.item && inBox(p, SHOW_SPOTS.easel)) return { open: 'job', item: s.easelArt.item };
+  if (burnShown && (inBox(p, SHOW_SPOTS.box) || inBox(p, SHOW_SPOTS.fire))) return { open: 'burn', item: burnShown };
+  if (inBox(p, SHOW_SPOTS.surfboard)) return { open: 'surf' };
+  return null;
+}
+if (FEATURES.showcase) {
+  showFeed = new ShowcaseFeed({ url: proxyUrl('/proxy/showcase'), onNew: (x) => showItem(x), onArt: (x) => loadArt(x.item) });
+  setTimeout(() => showFeed.start(), 5000);
+  canvas.addEventListener('click', (e) => {
+    const t = showSpot(e);
+    if (!t) return;
+    if (t.open === 'job') {
+      if (!openAnswer('/jobs/' + t.item.id)) openTab(t.item.explorer);
+      addDiary(`You clicked ${showTitle(t.item.title)}: its job opens beside the house.`);
+    } else if (t.open === 'site') {
+      // the site itself from IPFS beside the house (2026-10-28, owner: "if a website is built by the swarm, use the ipfs link for
+      // preview"); without a CID, its job as before
+      if (column && column.showSite(t.item.url, t.item.host ? 'https://' + t.item.host : null)) addDiary(`You clicked ${showTitle(t.item.title)}: the site opens beside the house, from IPFS.`);
+      else { if (!openAnswer('/jobs/' + t.item.id)) openTab(t.item.explorer); addDiary(`You clicked ${showTitle(t.item.title)}: its job opens beside the house.`); }
+    } else if (t.open === 'burn') {
+      openTab(t.item.etherscan);
+      addDiary('You clicked the burn: Etherscan opens in a new tab.');
+    } else if (t.open === 'post') {
+      if (!openSite('0x', '/surf/' + t.tx)) talkReply(OXTXT.note(false, null));
+      addDiary('You clicked the banner: Agent #0\'s post opens beside the house.');
+    } else if (t.open === 'surf') {
+      house.event({ type: 'flash', icon: 'heart' });
+      const line = `${pick(OXTXT.lead)} ${OXTXT.note(openSite('0x', '/surf'), null)}`;
+      talkReply(line);
+      addDiary(`You tapped the surfboard over the bed. He: ${line}`);
+    }
+  });
+  canvas.addEventListener('mousemove', (e) => { if (showSpot(e)) canvas.style.cursor = 'pointer'; });
+}
+// the changelog (2026-10-28): what changed in the house, newest first (changelog.js)
+function openChangelog() {
+  const list = $('changelog-list');
+  list.textContent = '';
+  for (const c of CHANGELOG) {
+    const h = document.createElement('h3'), ul = document.createElement('ul');
+    h.textContent = c.date;
+    for (const i of c.items) { const li = document.createElement('li'); li.textContent = i; ul.append(li); }
+    list.append(h, ul);
+  }
+  $('changelog-pop').hidden = false;
+  $('changelog-close').focus();
+}
+const closeChangelog = () => { $('changelog-pop').hidden = true; canvas.focus(); };
+$('changelog-close').addEventListener('click', closeChangelog);
+$('changelog-pop').addEventListener('click', (e) => { if (e.target === $('changelog-pop')) closeChangelog(); });
+$('changelog-pop').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeChangelog(); });
 
 // IMD or swarm news (2026-10-26): the issue loads while he fetches the paper; when he starts reading he gives the headline.
 // A click on him while he reads (state.action 'news') opens the issue page by page (news.js).
@@ -1438,6 +1836,7 @@ function confirmTalk(it, cmd) {
   const q = talkState.asked;
   talkState.asked = null;
   if (!q || Date.now() - q.at > 2 * 60000) return talkSay(cmd, BURN.nothing[it.yes ? 0 : 1]);
+  if (q.what === 'suggest') return it.yes ? talk(q.line) : talkSay(cmd, pick(SUGGEST.no));
   if (!it.yes) return talkSay(cmd, BURN.no);
   if (!BURN_TRACKER_CA) return talkSay(cmd, BURN.noCa);
   const url = `https://etherscan.io/address/${BURN_TRACKER_CA}#writeContract`;
@@ -1446,12 +1845,16 @@ function confirmTalk(it, cmd) {
   return talkSay(cmd, tab ? BURN.yes : BURN.blocked, { href: url, label: 'Etherscan' });
 }
 
-// a token's market: a ticker alone gets a question back (an address pasted next answers it); with an address he reads
-// DexScreener at the machine and opens defined.fi (price, chart) or LlamaSwap (buy, sell) beside him. While the seat
-// works he says no, and the page opens anyway.
+// a token's market: a ticker alone gets a question back (an address pasted next answers it). With an address he reads at
+// the machine (launch panel, 2026-10-26): a swarm launch or IMD from its own pool on our server (poolQuote, the numbers
+// the token panel shows), and its pool opens beside him in the column, whatever he was asked; any other token on
+// DexScreener, and a chart (or a bare address) opens defined.fi in a new tab. Buy and sell: no swap, he links defined.fi.
+// The swarm build has no pool reader and no column: DexScreener (a launch in its launch pool) and the defined.fi link,
+// as before. While the seat works he says no, and the pool opens anyway.
 async function marketTalk(it, cmd, busy, lvl) {
   const asked = house, last = talkState.market;
-  const act = it.act || (last && Date.now() - last.at < 5 * 60000 ? last.act : 'price');
+  const recent = last && Date.now() - last.at < 5 * 60000 ? last.act : null;
+  const act = it.act || recent || 'price', bare = !it.act && !recent;
   const grumble = lvl >= STRESS.warn ? ' (Last one. I mean it.)' : lvl >= STRESS.grumpy ? ' (Sigh.)' : '';
   if (!it.ca) {
     talkState.market = { act, at: Date.now() };
@@ -1459,37 +1862,54 @@ async function marketTalk(it, cmd, busy, lvl) {
     return talkSay(cmd, (it.ticker ? pick(MARKET.needCa(it.ticker)) : MARKET.noWhat[act]) + grumble);
   }
   talkState.market = null;
-  // the page for the answer: LlamaSwap for a buy or sell it can route, else defined.fi (a launch's own pool; Ethereum
-  // when nothing names the chain); null on a chain neither knows
-  const page = (q) => {
-    if ((act === 'buy' || act === 'sell') && !q.error && !q.missing && !q.noPool) {
-      const s = swapUrl(q.ca, q.chainId, act);
-      if (s) return { href: s, label: 'LlamaSwap' };
-    }
-    const c = chartUrl(q.ca, q.chainId || 'ethereum', q.poolId);
-    return c && { href: c, label: 'defined.fi' };
+  const pending = readMarket(it.ca);                                       // read while he walks to the machine
+  // a launch's or IMD's own pool: the panel beside him, his numbers from the same read
+  const finishPool = (p, lead) => {
+    const c = CHAINS[p.chain] || null, beside = openToken(p.ca);
+    const link = { href: chartUrl(p.ca, p.chain || 'ethereum', p.poolId), label: 'defined.fi' };
+    if (lead != null) return talkSay(cmd, `${lead} Look it up yourself${beside ? `, its pool is ${beside}.` : ':'}`, link);
+    talkSay(cmd, poolText(act, p, poolNum, c ? c.name : 'chain ' + p.chainId, beside) + grumble, link);
   };
-  const pending = launchOf(it.ca).then((l) => quote(it.ca, fetch, l));      // read while he walks to the machine
-  const finish = (q, lead) => {
-    const pg = page(q), c = CHAINS[q.chainId || 'ethereum'];
-    const beside = !!pg && act !== 'price' && openMarket(pg.href);          // a price is an answer; the rest are pages
-    if (lead != null) return talkSay(cmd, lead + (pg ? ` Look it up yourself${beside ? `, it's ${beside}` : ':'}${beside ? '.' : ''}` : ''), pg);
+  // DexScreener (a non-launch; the swarm build): defined.fi for the chain (Ethereum when nothing names it), in a new tab
+  // for a chart or a bare address
+  const finishQuote = (q, lead) => {
+    const c = CHAINS[q.chainId || 'ethereum'], url = chartUrl(q.ca, q.chainId || 'ethereum', q.poolId);
+    const pg = url && { href: url, label: 'defined.fi' };
+    const tab = pg && (act === 'chart' || bare) ? newTab(url) : false;
+    if (lead != null) return talkSay(cmd, lead + (pg ? ` Look it up yourself${tab === 'tab' ? ': ' + MARKET.tab : ':'}` : ''), pg);
     if (!pg && q.pairUrl) return talkSay(cmd, MARKET.offChain(q) + ' DexScreener has it:' + grumble, { href: q.pairUrl, label: 'DexScreener' });
     const eth = q.ca === WETH ? { symbol: 'ETH', coin: 'USDC' } : { coin: c && c.coin };
-    talkSay(cmd, marketText(act, { ...q, ...eth }, usd, c ? c.name : q.chainId, beside, pg && pg.label) + grumble, pg);
+    talkSay(cmd, marketText(act, { ...q, ...eth }, usd, c ? c.name : q.chainId, tab, pg && pg.label) + grumble, pg);
   };
+  const finish = (m, lead) => (m.pool ? finishPool(m.pool, lead) : finishQuote(m.q, lead));
   if (busy) {
     const tier = lvl >= STRESS.warn ? 2 : lvl >= STRESS.grumpy ? 1 : 0;
     house.event({ type: 'flash', icon: tier ? 'bang' : 'dots' });
-    const q = await pending;
-    if (house === asked) finish(q, pick(BUSY[tier]));
+    const m = await pending;
+    if (house === asked) finish(m, pick(BUSY[tier]));
     return;
   }
   talkReply(LOOKUP, false);
   house.event({ type: 'command', act: 'lookup', done: async () => {
-    const q = await pending;
-    if (house === asked) finish(q, null);
+    const m = await pending;
+    if (house === asked) finish(m, null);
   } });
+}
+
+// what he reads for an address: {pool} (poolQuote: a launch's or IMD's own pool; while our server cannot answer, a launch
+// the relay knows still opens its pool, which the panel reads again) or {q} (quote: DexScreener). A launch without a
+// readable pool counts as a non-launch (docs/launch-panel.md "Settled").
+async function readMarket(ca) {
+  if (PANEL) {
+    const p = await poolQuote(ca);
+    if (p && !p.error && !p.noPool) return { pool: p };
+    if (p && p.error) {
+      const l = await launchOf(ca);
+      if (l && l.pool && l.pool.id) return { pool: { ...p, kind: 'launch', launchNumber: l.launchNumber, chain: CHAIN_OF_ID[l.chainId] || null, chainId: l.chainId, poolId: l.pool.id } };
+    }
+    return { q: await quote(ca, fetch, null) };
+  }
+  return { q: await quote(ca, fetch, await launchOf(ca)) };
 }
 
 $('talk-form').addEventListener('submit', (e) => { e.preventDefault(); const v = $('talk-input').value; $('talk-input').value = ''; talk(v); });
@@ -1511,15 +1931,43 @@ $('legend-btn').addEventListener('click', () => {
 });
 for (const b of document.querySelectorAll('[data-look-btn]')) b.addEventListener('click', () => applyTheme(b.dataset.lookBtn));
 $('demo-btn').addEventListener('click', () => (mode === 'demo' ? randomBusySeat() : startDemo()));
-$('sound-btn').addEventListener('click', () => {
-  const on = !sound.on; sound.enable(on);
-  $('sound-btn').setAttribute('aria-pressed', String(on)); $('sound-btn').textContent = on ? 'Sound on' : 'Sound off';
-});
+// the house's beeps: the hidden Sound button, the frog's menu and the talk line ("sound on") all set it here
+function setSound(on) {
+  sound.enable(!!on);
+  $('sound-btn').setAttribute('aria-pressed', String(sound.on)); $('sound-btn').textContent = sound.on ? 'Sound on' : 'Sound off';
+  menuSync();
+}
+$('sound-btn').addEventListener('click', () => setSound(!sound.on));
 window.addEventListener('hashchange', route);
+
+// ---------- the frog's menu (src/menu.js): light / dark, music, sound, full screen, the original ----------
+// Each entry shows its state; whatever changes it (the menu, the talk line, the browser's own way out of full screen)
+// calls menuSync, so the menu says what is.
+menu = new Menu({ button: $('menu-btn'), menu: $('lcp-menu'), onPick: (item) => {
+  if (item === 'mode') setMode(document.documentElement.dataset.mode === 'light' ? 'dark' : 'light', true);
+  else if (item === 'music') toggleRadio();
+  else if (item === 'sound') setSound(!sound.on);
+  else if (item === 'full') { if (full.on) full.leave(); else full.enter(); }
+} });
+function menuSync() {
+  if (!menu) return;
+  menu.set('mode', document.documentElement.dataset.mode !== 'light');
+  if (FEATURES.radio) menu.set('music', radio.on, `${radio.station.label} on theidm.fun`);
+  menu.set('sound', sound.on);
+  menu.set('full', full.on, full.on ? 'Esc, or here, to leave' : 'the house as large as it fits');
+}
+// Esc leaves full screen (the browser's own full screen takes its Esc itself: src/full.js ends the mode then); a letter, the
+// paper, the station, the whiteboard, the legend or the menu open: Esc closes that first, as before
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !full.on || menu.isOpen) return;
+  if (document.querySelector('.letter-pop:not([hidden]), dialog[open]')) return;
+  full.leave();
+}, true);
 
 applyTheme(theme.id);
 route();
 if (FEATURES.radio) { radio.armAutostart(); radioChanged(radio); }   // a wanted radio starts at the first click or key
+menuSync();
 requestAnimationFrame(frame);
 window.__house = () => house;   // for local testing in the console
 window.__live = live;
@@ -1527,5 +1975,6 @@ window.__theme = () => theme;
 window.__demo = demo;
 window.__follower = follower;
 window.__radio = radio;
+window.__full = full;
 window.__news = () => ({ issue: newsIssue, reader: news });
 window.__stationFeed = stationFeed;

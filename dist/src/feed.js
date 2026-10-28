@@ -1,5 +1,5 @@
 import { CATEGORY_SAY } from './mapping.js';
-import { RELAY } from './env.js';
+import { RELAY, proxyUrl } from './env.js';
 
 // Seat data. LiveFeed polls the public /swarm route (CORS *) and the oracle panels; DemoFeed replays every event.
 // Both call onEvent({type, ...}) and onStatus(status). Nothing else leaves the page.
@@ -38,13 +38,18 @@ const SKILL_CATEGORY = {
   'write-foundry-tests': 'tests', 'gas-and-size-report': 'tests', 'integrate-project': 'assemble', 'fix-findings': 'assemble',
   'refine-project': 'assemble', 'adapt-contract-project': 'assemble', 'deploy-script': 'assemble',
   'write-readme-and-docs': 'docs', 'build-ponder-indexer': 'indexer', 'workflow-planner': 'planning',
+  // contract building (owner 2026-10-26: "an der werkbank"; checked against the live catalog and 129 job records: the
+  // build_contract_project step went to the computer on token launches and to the kitchen on evm_contracts launches)
+  'build-contract-project': 'contract', 'implement-contract': 'contract', 'implement-one-contract': 'contract',
+  'implement-and-test': 'contract', 'scaffold-project': 'contract', 'goal-judge': 'review',
 };
 const TEMPLATE_CATEGORY = { research: 'research', audit: 'review', fuzz: 'fuzz' };
 const ROLE_CATEGORY = { review: 'review', tests: 'tests', integrate: 'assemble' };
 // step keys: the plane's own and a requester's free words in a dag; the first match wins (site_content_check is a review)
 const KEY_CATEGORY = [
-  [/audit|review|critic|adversarial|check/, 'review'], [/website|site|frontend|landing|component/, 'website'],
-  [/image|illustrat|artwork|logo/, 'image'], [/test|gas_/, 'tests'], [/manifest|integrat|fix|refine|adapt|deploy/, 'assemble'],
+  [/audit|review|critic|adversarial|check|judge/, 'review'], [/website|site|frontend|landing|component/, 'website'],
+  [/image|illustrat|artwork|logo/, 'image'], [/^implement_and_test/, 'contract'], [/test|gas_/, 'tests'],
+  [/manifest|integrat|fix|refine|adapt|deploy/, 'assemble'], [/contract|scaffold/, 'contract'],     // adapt_contract_project stays assembly
   [/readme|docs?$|documentation/, 'docs'], [/fuzz/, 'fuzz'], [/ponder|indexer/, 'indexer'], [/plan/, 'planning'],
 ];
 
@@ -120,7 +125,7 @@ async function jobInfo(jobId) {
   if (!jobId || !RELAY) return undefined;
   if (jobInfos.has(jobId)) return jobInfos.get(jobId);
   try {
-    const r = await fetch('/proxy/jobs/' + jobId, { cache: 'no-store' });
+    const r = await fetch(proxyUrl('/proxy/jobs/' + jobId), { cache: 'no-store' });
     if (!r.ok) return undefined;
     const info = await r.json();
     jobInfos.set(jobId, info);
@@ -134,14 +139,14 @@ async function scheduledIds() {
   if (!RELAY || Date.now() - scheduled.at < 10 * 60000) return scheduled.ids;
   scheduled.at = Date.now();
   try {
-    const r = await fetch('/proxy/scheduled', { cache: 'no-store' });
+    const r = await fetch(proxyUrl('/proxy/scheduled'), { cache: 'no-store' });
     if (r.ok) scheduled.ids = new Set((await r.json()).ids || []);
   } catch (e) { /* no relay */ }
   return scheduled.ids;
 }
 
 async function seatDetail(id) {
-  for (const url of RELAY ? ['/proxy/seats/' + id, API + '/seats/' + id] : []) {      // hosted: /seats has no CORS
+  for (const url of RELAY ? [proxyUrl('/proxy/seats/' + id), API + '/seats/' + id] : []) {      // hosted: /seats has no CORS
     try {
       const r = await fetch(url, { cache: 'no-store' });
       if (r.ok) { const d = await r.json(); return d.seat || d; }
@@ -209,7 +214,7 @@ export class LiveFeed {
     if (!RELAY || id == null || !(this.prev && this.prev.data && this.prev.data.working)) return this.setMachine(null);
     let info = null;
     try {
-      const r = await fetch('/proxy/seats/' + id + '/machine', { cache: 'no-store' });
+      const r = await fetch(proxyUrl('/proxy/seats/' + id + '/machine'), { cache: 'no-store' });
       if (r.ok) info = machineInfo(await r.json());
     } catch (e) { /* no relay: the machine shows nothing */ }
     if (id !== this.seat || !(this.prev && this.prev.data && this.prev.data.working)) return;
@@ -646,7 +651,7 @@ export class JobFollower {
         await this.source.readOracle(id);             // only an oracle question reads anything here
         rec = this.source.record(id) || { id, state: 'unseen', steps: [] };
       } else {
-        const r = await fetch('/proxy/jobs/' + id + '/steps', { cache: 'no-store' });
+        const r = await fetch(proxyUrl('/proxy/jobs/' + id + '/steps'), { cache: 'no-store' });
         if (!r.ok) throw new Error('the relay answered ' + r.status);
         rec = await r.json();
       }

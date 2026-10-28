@@ -1,48 +1,39 @@
-// A token's market for the command line (owner, 2026-10-24): price from DexScreener, the chart on defined.fi (with the
-// owner's referral code), buy and sell on LlamaSwap. A token the swarm launched is read in its launch's own Uniswap v4
-// pool (relay /proxy/launches/token/<ca>: the pool key and id), never the deepest one, since launches attract fee-trap
-// pools; the chart opens even when DexScreener has no pool (owner, 2026-10-24). Measured 2026-10-24 from a 127.0.0.1
-// page: DexScreener's API sends CORS *, finds the chain from the address alone and agreed with defined.fi; defined.fi
-// and LlamaSwap may be framed (KyberSwap, Uniswap, 1inch, Jumper and Matcha may not); GeckoTerminal names IMD
-// "Vibe Coins / VIBE", so not that. Only 0x addresses: the parser lowercases what the visitor types, and LlamaSwap is
-// EVM only.
+// A token's market for the command line (owner, 2026-10-24; launch panel Task 5, 2026-10-26). A token the swarm launched,
+// and IMD (the house's token), is read in its own Uniswap v4 pool by our server (/proxy/panels/token, selfhost/pools.py),
+// never the deepest one, since launches attract fee-trap pools; the column shows that pool in our token panel
+// (panels/?view=token). Everything else: the price from DexScreener, the chart on defined.fi (with the owner's referral
+// code) in a new tab. No swaps (owner, 2026-10-26: "vergiss die swap funktion erstmal wieder"): buy and sell answers give
+// the defined.fi link; the LlamaSwap frame and its links are gone. The swarm-hosted build has no relay: there a launch is
+// read on DexScreener in its launch pool (data/launch-pools.json) and every page is a link, as before.
+// Measured 2026-10-24 from a 127.0.0.1 page: DexScreener's API sends CORS *, finds the chain from the address alone and
+// agreed with defined.fi; GeckoTerminal names IMD "Vibe Coins / VIBE", so not that. Only 0x addresses: the parser
+// lowercases what the visitor types.
 
-import { RELAY } from './env.js';
+import { RELAY, proxyUrl } from './env.js';
 
 export const IMD_CA = '0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7';     // IMD on Ethereum (BridgedFP, LayerZero OFT)
+export const IMD_POOL = '0x415829f72e9f54531c26eae76f107618540e898a45d6ae35959e143f5faca704';   // its IMD/ETH v4 pool (radio.js)
 export const WETH = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';         // ETH by its ticker (owner, 2026-10-24)
-const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';                // what ETH is bought with and sold for
 export const DEFINED_REF = 'UF1R0';
-const NATIVE = '0x0000000000000000000000000000000000000000';            // LlamaSwap's word for the chain's own coin
 const DEXSCREENER = 'https://api.dexscreener.com/latest/dex/tokens/';
 
-// DexScreener chain id -> its name, defined.fi's and LlamaSwap's (each pair checked on 2026-10-24; LlamaSwap has no
-// Robinhood Chain)
+// DexScreener chain id -> its name and defined.fi's (each pair checked on 2026-10-24)
 export const CHAINS = {
-  ethereum: { name: 'Ethereum', defined: 'eth', llama: 'ethereum', coin: 'ETH' },
-  base: { name: 'Base', defined: 'base', llama: 'base', coin: 'ETH' },
-  arbitrum: { name: 'Arbitrum', defined: 'arbitrum', llama: 'arbitrum', coin: 'ETH' },
-  bsc: { name: 'BNB Chain', defined: 'bsc', llama: 'bsc', coin: 'BNB' },
-  robinhood: { name: 'Robinhood Chain', defined: 'robinhood', llama: null, coin: 'ETH' },
+  ethereum: { name: 'Ethereum', defined: 'eth', coin: 'ETH' },
+  base: { name: 'Base', defined: 'base', coin: 'ETH' },
+  arbitrum: { name: 'Arbitrum', defined: 'arbitrum', coin: 'ETH' },
+  bsc: { name: 'BNB Chain', defined: 'bsc', coin: 'BNB' },
+  robinhood: { name: 'Robinhood Chain', defined: 'robinhood', coin: 'ETH' },
 };
-const CHAIN_OF_ID = { 1: 'ethereum', 8453: 'base', 4663: 'robinhood' };      // a launch record's chainId
+export const CHAIN_OF_ID = { 1: 'ethereum', 8453: 'base', 4663: 'robinhood' };      // a launch record's chainId
 
-// the pages the side-by-side page agrees to show beside the house; it checks the same shapes
+// the only pages he opens in a new tab for a token (main.js newTab): defined.fi with the ref code
 export const DEFINED_URL = /^https:\/\/www\.defined\.fi\/token\/(eth|base|arbitrum|bsc|robinhood)\/0x[0-9a-f]{40}(\/0x[0-9a-f]{64})?\?ref=UF1R0$/;
-export const LLAMA_URL = /^https:\/\/swap\.defillama\.com\/\?chain=(ethereum|base|arbitrum|bsc)&from=0x[0-9a-f]{40}&tab=swap&to=0x[0-9a-f]{40}$/;
 
 // poolId: show that pool (a launch's own); defined.fi falls back to the token page while it does not know the pool yet
 export function chartUrl(ca, chainId, poolId = null) {
   const c = CHAINS[chainId];
   return c ? `https://www.defined.fi/token/${c.defined}/${ca}${poolId ? '/' + poolId : ''}?ref=${DEFINED_REF}` : null;
-}
-
-// buy: the chain's coin -> the token; sell: the token -> the coin; ETH itself (WETH): USDC -> ETH and back, on Ethereum
-export function swapUrl(ca, chainId, act) {
-  const c = CHAINS[chainId];
-  if (!c || !c.llama) return null;
-  const [from, to] = ca === WETH ? (act === 'sell' ? [NATIVE, USDC] : [USDC, NATIVE]) : act === 'sell' ? [ca, NATIVE] : [NATIVE, ca];
-  return `https://swap.defillama.com/?chain=${c.llama}&from=${from}&tab=swap&to=${to}`;
 }
 
 // the token's deepest pool where it is the base token (its price is the token's), on any chain
@@ -58,7 +49,7 @@ let poolTable = null;
 export async function launchOf(ca, fetchImpl = fetch, relay = RELAY) {
   try {
     if (relay) {
-      const r = await fetchImpl('/proxy/launches/token/' + ca, { cache: 'no-store' });
+      const r = await fetchImpl(proxyUrl('/proxy/launches/token/' + ca), { cache: 'no-store' });
       return r.ok ? (await r.json()).launch || null : null;
     }
     poolTable = poolTable || fetchImpl('data/launch-pools.json').then((r) => (r.ok ? r.json() : { launches: {} }));
@@ -67,7 +58,8 @@ export async function launchOf(ca, fetchImpl = fetch, relay = RELAY) {
   } catch (e) { poolTable = null; return null; }
 }
 
-// launch: launchOf(). {ca, chainId, symbol, name, price, change24, liquidity, mcap, dex, pairUrl, launch, poolId}; a
+// DexScreener, for a non-launch (and for every token in the swarm build, which has no pool reader). launch: launchOf().
+// {ca, chainId, symbol, name, price, change24, liquidity, mcap, dex, pairUrl, launch, poolId}; a
 // launch whose pool DexScreener does not list yet: {ca, chainId, launch, poolId, noPool: true}; {ca, missing: true}
 // (no pool and not a launch); {ca, error} (DexScreener did not answer; a launch still has its chain and pool)
 export async function quote(ca, fetchImpl = fetch, launch = null) {
@@ -98,4 +90,52 @@ export function usd(n) {
   if (n >= 1 || n <= 0) return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fixed = n.toFixed(Math.min(20, 3 - Math.floor(Math.log10(n)))).replace(/0+$/, '');
   return '$' + (fixed.split('.')[1].length < 2 ? n.toFixed(2) : fixed);
+}
+
+// A launch's (or IMD's) own pool as our server reads it (/proxy/panels/token, selfhost/pools.py `token`), the same answer
+// the token panel shows, so his spoken price and the panel agree. null: not a launch (the server's 404); {ca, error}: the
+// server did not answer; {..., noPool: true}: a launch without a readable pool (no seeded pool: treated as a non-launch).
+// Else {ca, chain (CHAINS key), chainId, kind: 'launch'|'house', launchNumber, symbol, name, pair (its symbol), poolId,
+// price: {paired, usd}, liquidity: {token, paired, usd}, volume24h: {paired, usd, swaps}, indexing, problem}; each number
+// a finite number or null.
+const fin = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+const txt = (x, n = 32) => (typeof x === 'string' && x ? x.slice(0, n) : null);
+export async function poolQuote(ca, fetchImpl = fetch) {
+  let d;
+  try {
+    const r = await fetchImpl(proxyUrl('/proxy/panels/token?ca=' + ca), { cache: 'no-store' });
+    if (r.status === 404) return null;
+    if (!r.ok) return { ca, error: 'the pool reader answered ' + r.status };
+    d = await r.json();
+  } catch (e) { return { ca, error: 'the pool reader did not answer' }; }
+  if (!d || typeof d !== 'object' || String(d.ca || '').toLowerCase() !== ca || !d.price || typeof d.price !== 'object') return { ca, error: 'the pool reader answered nonsense' };
+  const l = d.liquidity || {}, v = d.volume24h || {};
+  const out = { ca, chain: CHAIN_OF_ID[d.chainId] || null, chainId: Number(d.chainId) || null, kind: d.kind === 'house' ? 'house' : 'launch',
+    launchNumber: Number.isInteger(d.launchNumber) ? d.launchNumber : null, symbol: txt(d.symbol), name: txt(d.name, 64),
+    pair: txt(d.pair && d.pair.symbol), poolId: /^0x[0-9a-f]{64}$/.test(String(d.poolId || '')) ? d.poolId : null,
+    price: { paired: fin(d.price.paired), usd: fin(d.price.usd) },
+    liquidity: { token: fin(l.token), paired: fin(l.paired), usd: fin(l.usd) },
+    volume24h: { paired: fin(v.paired), usd: fin(v.usd), swaps: Number.isInteger(v.swaps) ? v.swaps : null },
+    indexing: d.indexing && typeof d.indexing === 'object' ? d.indexing : null, problem: txt(d.problem, 120) };
+  if (out.problem && out.price.paired == null) out.noPool = true;
+  return out;
+}
+
+// The token panel's numbers (panels/panels.js `num`, the same rules, kept here because the swarm build has no panels/):
+// four significant digits; at 1,000 and up whole and grouped (8,621), at a million "90.71 M"; below 0.001 the explorers'
+// subscript-zero form, the subscript counting the zeros after "0.": 0.0000283 -> 0.0₄283.
+const SUB = '₀₁₂₃₄₅₆₇₈₉';
+const trimZeros = (t) => (t.includes('.') ? t.replace(/0+$/, '').replace(/\.$/, '') : t);
+export function poolNum(x, sig = 4) {
+  if (typeof x !== 'number' || !Number.isFinite(x)) return '–';
+  if (x === 0) return '0';
+  const sign = x < 0 ? '-' : '', a = Math.abs(x);
+  if (a >= 1e9) return `${sign}${trimZeros((a / 1e9).toFixed(2))} B`;
+  if (a >= 1e6) return `${sign}${trimZeros((a / 1e6).toFixed(2))} M`;
+  if (a >= 1000) return sign + Math.round(a).toLocaleString('en-US');
+  if (a >= 0.001) return sign + trimZeros(Number(a.toPrecision(sig)).toFixed(Math.max(0, sig - 1 - Math.floor(Math.log10(a)))));
+  const [m, e] = a.toExponential(sig - 1).split('e');
+  const zeros = -Number(e) - 1;
+  if (zeros < 3) return sign + trimZeros(Number(a.toPrecision(sig)).toFixed(zeros + sig));
+  return `${sign}0.0${[...String(zeros)].map((d) => SUB[d]).join('')}${m.replace('.', '').replace(/0+$/, '') || '0'}`;
 }

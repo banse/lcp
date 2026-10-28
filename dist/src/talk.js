@@ -11,10 +11,11 @@ const CA = /\b(0x[0-9a-f]{40})\b/;
 const IMD = '0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7';              // market.js IMD_CA (talk.js stays import-free)
 const WETH = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';             // market.js WETH: ETH by its ticker
 const KNOWN = { IMD, ETH: WETH, WETH, ETHER: WETH, ETHEREUM: WETH };
+const DOG = '(?:dog|doggo|doggy|doggie|pup|puppy|pupper)';
 
 // a token's market (owner, 2026-10-24): price, chart, buy, sell. With a contract address he looks it up; a ticker alone
 // gets a question back (tickers are not unique), except IMD, his house's own token, and ETH. 'prize' is the common typo.
-const MARKET_WORD = /^(price|prices|prize|chart|charts|candles?|mcap|fdv|cap)$/;
+const MARKET_WORD = /^(price|prices|prize|chart|charts|candles?|mcap|fdv|cap|worth)$/;
 const FILLER = new Set(('check show open see look give get what what\'s whats is are was the a an of for on at in to me us it this that ' +
   'my your his our some token tokens coin current live now today please pls plz bitte how much high low doing about and ' +
   'market ser real quick price prices prize chart charts candles mcap fdv cap buy sell ape bid dump').split(' '));
@@ -31,7 +32,7 @@ function tickerOf(n) {
 
 function marketAct(n) {
   return /\b(chart|charts|candles?)\b/.test(n) ? 'chart' : /\b(sell|dump)\b/.test(n) ? 'sell'
-    : /\b(buy|ape|bid)\b/.test(n) ? 'buy' : /\b(price|prices|prize|mcap|fdv|market ?cap)\b/.test(n) ? 'price' : null;
+    : /\b(buy|ape|bid)\b/.test(n) ? 'buy' : /\b(price|prices|prize|mcap|fdv|market ?cap|worth)\b/.test(n) ? 'price' : null;
 }
 
 // {kind: 'market', act: price|chart|buy|sell|null (a bare address: what he was asked last), ca, ticker}
@@ -63,22 +64,132 @@ export function normalize(text) {
   return String(text || '').toLowerCase().replace(/[“”’`]/g, "'").replace(/[^a-z0-9#$'?\-\s.]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// a wallet named anywhere in the (normalized) line: a 0x address or a name.eth, raw (main.js checks it), else null
+const walletIn = (n) => (n.match(/(?:^|\s)(0x[0-9a-f]{40}|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth)(?=$|[\s?.])/) || [])[1] || null;
+
+// "what is X" and "how do I X" about the swarm itself (2026-10-28): faq(n) -> {kind: 'faq', topic} or null. The whole line is
+// the question ("what is imd worth" stays the market's, "what are the seats doing" a lookup); FAQ in the line tables answers
+const FAQ_TOPIC = [[/^(?:imd|identity ?md|the swarm|swarm|imd swarm)$/, 'imd'], [/^(?:seats?|idmd|imd nfts?|nft seats?)$/, 'seat'],
+  [/^(?:oracles?|oracle (?:questions?|requests?|panels?))$/, 'oracle'], [/^(?:jobs?|swarm jobs?)$/, 'job'],
+  [/^(?:sites?|swarm sites?|websites?)$/, 'site'], [/^(?:launch(?:es)?|token launch(?:es)?)$/, 'launch']];
+const FAQ_WHAT = /^(?:(?:so|ok|hey|yo|ser|pepe),? )?(?:what(?:'s| is| are|s)|wtf is|explain|define|eli5)(?: (an?|the))? ([a-z ]{2,24}?)\??$/;
+const FAQ_HOW = [
+  [/\bhow (?:do|can|could|would) (?:i|we|you|one|someone|anyone) (?:get|buy|own|rent|run|have) (?:a |an |my |one |the )?(?:seat|idmd|imd nft)\b|\b(?:how to|where (?:do|can) i) (?:get|buy|run) (?:a |an )?(?:seat|idmd|imd nft)\b/, 'seat'],
+  [/\bhow (?:do|can|could|would) (?:i|we|you|one|someone) (?:launch|deploy|make|create|start) (?:a |an |my |our |me a )?(?:token|coin|memecoin|launch)\b|\bhow to (?:launch|deploy|make|create) (?:a |an )?(?:token|coin)\b/, 'launch'],
+  [/\bhow (?:do|can|could|would) (?:i|we|you|one) (?:ask|use|pay|order|open) (?:an |the )?oracle\b|\bhow (?:does|do) (?:the )?oracles? work\b/, 'oracle'],
+  [/\bhow (?:do|can|could|would) (?:i|we|you|one) (?:order|open|post|start|pay for|get) (?:a |an )?job\b|\bhow (?:does|do) (?:a |the )?jobs? work\b/, 'job'],
+  [/\bhow (?:do|can|could|would) (?:i|we|you|one) (?:get|make|build|order|host) (?:a |an )?(?:swarm )?(?:site|website)\b/, 'site'],
+  [/\bhow (?:does|do) (?:imd|the swarm|identity ?md) work\b/, 'imd'],
+];
+function faq(line) {
+  const n = line.replace(/\b(?:please|pls|plz|bitte)\b/g, ' ').replace(/[,\s]+(?:ser|pepe)\??$/, '').replace(/\s+/g, ' ').trim();   // "what is imd please, ser"
+  const w = FAQ_WHAT.exec(n);                                           // "what are the jobs" is which ones: the count
+  const t = w && !(w[1] === 'the' && /s$/.test(w[2])) && FAQ_TOPIC.find(([re]) => re.test(w[2].trim()));
+  if (t) return { kind: 'faq', topic: t[1] };
+  const h = FAQ_HOW.find(([re]) => re.test(n));
+  return h ? { kind: 'faq', topic: h[1] } : null;
+}
+
+// German wishes (2026-10-28, owner: "only if its not too complex"): a word table turns them into the English line before the
+// rules; his answers stay English. Only a line with a word that is German and nothing else is translated, so "die", "an" or
+// "post" in an English line stay English.
+const DE_PHRASE = [[/\bwie geht'?s(?: dir)?\b|\bwie geht es dir\b/g, 'how are you'], [/\bwas machst du\b/g, 'what are you doing'],
+  [/\bwas kostet\b/g, 'price of'], [/\bguten morgen\b/g, 'gm'], [/\bgute nacht\b/g, 'gn'], [/\bwer bist du\b/g, 'who are you'],
+  [/\bwer arbeitet\b/g, 'who is working'], [/\bwas ist\b/g, 'what is']];
+const DE_WORD = { hund: 'dog', hundi: 'dog', fuettere: 'feed', fuettern: 'feed', fuetter: 'feed', fuettert: 'feed', klavier: 'piano',
+  spiel: 'play', spiele: 'play', spielen: 'play', spielt: 'play', fernsehen: 'tv', fernseher: 'tv', glotze: 'tv', koch: 'cook',
+  koche: 'cook', kochen: 'cook', lies: 'read', lesen: 'read', buch: 'book', schlaf: 'sleep', schlafen: 'sleep', dusch: 'shower',
+  duschen: 'shower', feuer: 'fire', kamin: 'fire', fenster: 'window', giess: 'water', giesse: 'water', pflanzen: 'plants',
+  tanz: 'dance', tanzen: 'dance', sterne: 'stars', briefkasten: 'mailbox', musik: 'music', lauter: 'louder', leiser: 'quieter',
+  preis: 'price', zeig: 'show', zeige: 'show', mir: 'me', aus: 'off', an: 'on', die: 'the', der: 'the', das: 'the', den: 'the',
+  dem: 'the', und: 'and', ein: 'a', eine: 'a', mal: '', doch: '', bitte: 'please', danke: 'thanks', neuigkeiten: 'news',
+  nachrichten: 'news', zeitung: 'newspaper', verbrennungen: 'burns', sitze: 'seats', sitz: 'seat', zufaelliger: 'random' };
+const DE_ONLY = new Set(Object.keys(DE_WORD).filter((w) => !['an', 'aus', 'die', 'den', 'mal', 'lies', 'buch', 'koch', 'spiel', 'tanz'].includes(w)));
+export function deutsch(text) {
+  let t = String(text || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+  const words = t.match(/[a-z']+/g) || [];
+  if (!words.some((w) => DE_ONLY.has(w)) && !DE_PHRASE.some(([re]) => (re.lastIndex = 0, re.test(t)))) return String(text || '');
+  for (const [re, en] of DE_PHRASE) t = t.replace(re, en);
+  return t.replace(/[a-z']+/g, (w) => (w in DE_WORD ? DE_WORD[w] : w)).replace(/\s+/g, ' ').trim();
+}
+
+// a line he does not get, with a typo (2026-10-28): each unknown word of three letters or more that is one edit (two from seven
+// letters) away from a word the rules know is swapped for it; if the new line means something, he asks "Did you mean …?". The
+// rules' own words are the vocabulary, so it grows with them. Ties: a transposition first, then a dropped letter, a wrong one,
+// an extra one.
+let VOCAB = null;
+const vocab = () => VOCAB || (VOCAB = new Set(RULES.flatMap(([re]) => re.source.replace(/\\[bBdDsSwW]/g, ' ').match(/[a-z]{3,}/g) || [])
+  .concat([...FILLER], Object.keys(EGG), Object.keys(DO))));
+function edit(a, b) {                                                   // optimal string alignment distance
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+  }
+  return d[a.length][b.length];
+}
+function fix(w, words) {
+  const max = w.length >= 7 ? 2 : 1;
+  let best = null, key = null;
+  for (const v of words) {
+    if (Math.abs(v.length - w.length) > max) continue;
+    const e = edit(w, v);
+    if (e > max) continue;
+    const kind = v.length === w.length ? ([...v].sort().join('') === [...w].sort().join('') ? 0 : 2) : v.length > w.length ? 1 : 3;
+    const k = e * 10 + kind;
+    if (key == null || k < key) { best = v; key = k; }
+  }
+  return best;
+}
+export function suggest(n) {
+  const words = vocab();
+  let changed = false;
+  const line = n.split(' ').map((w) => {
+    const core = w.replace(/[?.]+$/, '');
+    if (core.length < 3 || !/^[a-z]+$/.test(core) || words.has(core)) return w;
+    const f = fix(core, words);
+    if (!f) return w;
+    changed = true; return f + w.slice(core.length);
+  }).join(' ');
+  return changed && parse(line, false).kind !== 'unknown' ? line : null;
+}
+
+// a wish with "don't" before it (2026-10-28): he doesn't do it; "don't want music" is the radio off. "why don't you …" stays a wish
+const NEG = /\b(?:don'?t|do not|dont|never)\b/, NEG_NOT = /\bwhy (?:don'?t|dont|not)\b/;
+function negated(it, n) {
+  if (!NEG.test(n) || NEG_NOT.test(n)) return it;
+  if (it.kind === 'do' && it.act === 'records' || it.kind === 'radio' && (it.act === 'on' || it.act === 'tune')) return { kind: 'radio', act: 'off' };
+  if (it.kind === 'do') return { kind: 'egg', act: 'dont' };
+  return it;
+}
+
 // first match wins: page commands, then the jokes, then questions, then things to do
 const RULES = [
   [/^(help|commands|\?|what can (you|i) (do|say|ask)|how does this work)\b/, () => ({ kind: 'page', act: 'help' })],
+  // "what is / how do I" (2026-10-28, ideas lcp-talk-rule-engine): a short answer from the official docs and its link, before
+  // the rules that count things, so "how do i launch a token" is no launch count and "what is an oracle question" no oracle count
+  [/./, (m, n) => faq(n)],
+  [/\b(?:tell|know) (?:me |us )?(?:a |any |some |another )?jokes?\b|\bmake me laugh\b|\bsay something funny\b/, () => ({ kind: 'egg', act: 'joke' })],
   [/\brandom (active )?job\b/, () => ({ kind: 'page', act: 'randomJob' })],
   [/\b(random|any)( busy)? seat\b|\bsurprise me\b/, () => ({ kind: 'page', act: 'random' })],
   [new RegExp('\\bfollow(?:ing)?\\b.*?\\b' + JOB + '\\b'), (m) => ({ kind: 'page', act: 'follow', job: m[1] })],
   [/\bfollow\b.*\bjob\b/, () => ({ kind: 'page', act: 'follow', job: null })],
   [new RegExp('\\b(?:show|open|explain)\\b(?: me)?(?: the)? job #?' + JOB + '\\b'), (m) => ({ kind: 'ask', topic: 'job', job: m[1] })],
-  [/\b(?:visit|go to|goto|switch to|move to|show me|open)\s+(?:seat\s*)?#?(\d{1,4})\b/, (m) => ({ kind: 'page', act: 'visit', seat: +m[1] })],
+  [/\b(?:visit|go to|goto|switch to|move to|show me|open|take me to|bring me to|jump to)\s+(?:seat\s*)?#?(\d{1,4})\b/, (m) => ({ kind: 'page', act: 'visit', seat: +m[1] })],
   [/^(?:seat\s*)?#?(\d{1,4})$/, (m) => ({ kind: 'page', act: 'visit', seat: +m[1] })],
   [/\bdemo\b/, () => ({ kind: 'page', act: 'demo' })],
+  // the house in full screen and the page's light or dark (2026-10-27; the frog's menu has both): leaving first, so "exit
+  // full screen" is no wish for it; before the column's rules, so "close full screen" is no list
+  [/\b(?:exit|leave|quit|close|end|stop|escape|turn off|switch off|get out of|out of|no more)\s+(?:the\s+)?full[ -]?screen\b|\bfull[ -]?screen(?: mode)?\s+off\b|^(?:normal|small|smaller) (?:size|house|screen)$/,
+    () => ({ kind: 'page', act: 'fullscreen', on: false })],
+  [/\bfull[ -]?screen\b|\b(?:bigger|big|large|larger) house\b|\bmake (?:it|the house) (?:big|bigger|large|larger)\b/, () => ({ kind: 'page', act: 'fullscreen', on: true })],
+  [/\b(light|dark) (?:mode|theme)\b/, (m) => ({ kind: 'page', act: 'mode', mode: m[1] })],
   // the radio (2026-10-25, owner: background music from theidm.fun, he switches it on request): theidm.fun's stations on
   // the record player (radio.js). He switches stations and the volume; the genre is the market's, so a genre wish gets
   // the truth. Before the sound rule: "music off" is the radio, "sound off" the house's beeps.
-  [/\b(?:radio|music|tunes?|station|player|record player) (on|off)\b|\bturn (on|off) the (?:radio|music|tunes?|record player)\b|\b(?:stop|kill|silence|shut off|turn off|switch off) the (?:music|radio|tunes?|noise|record)\b|^(?:music|radio|tunes?) ?(on|off)$/,
-    (m, n) => ({ kind: 'radio', act: /\boff\b|\b(?:stop|kill|silence|shut off)\b/.test(n) ? 'off' : 'on' })],
+  [/\b(?:radio|music|tunes?|station|player|record player) (on|off)\b|\bturn (on|off) the (?:radio|music|tunes?|record player)\b|\b(?:stop|kill|silence|shut off|turn off|switch off) the (?:music|radio|tunes?|noise|record)\b|^(?:music|radio|tunes?) ?(on|off)$|\bno more (?:music|radio|tunes?)\b/,
+    (m, n) => ({ kind: 'radio', act: /\boff\b|\b(?:stop|kill|silence|shut off|no more)\b/.test(n) ? 'off' : 'on' })],
   [/\bturn it off,? i'?m working\b|\bi'?m working\b.*\b(?:music|radio)\b|\b(?:music|radio)\b.*\bi'?m working\b/, () => ({ kind: 'radio', act: 'offWorking' })],
   [/\b(?:play|put on|spin|tune(?: in)?(?: to)?|switch(?: over)? to|change to)\s+(?:the |some )?(?:station |radio |record |tunes? of |music of )?\$?(imd ?\/? ?eth|imd-eth|imd|idm|intelligent dance market|infer|chog|credits)\b/,
     (m) => ({ kind: 'radio', act: 'tune', name: m[1] })],
@@ -86,8 +197,8 @@ const RULES = [
   [/\bnext (?:station|record|channel|track|tune|song)\b|^skip$|\bother station\b|\bchange the (?:station|record|channel)\b/, () => ({ kind: 'radio', act: 'next' })],
   [/\bwhat'?s (?:playing|on the radio|this (?:music|song|track|tune|noise))\b|\bwhat (?:is|'s) (?:this|that|the) (?:music|song|tune|track|station|noise)\b|\bwhich (?:station|record)\b|\bnow playing\b|\bwhat (?:are we|am i) listening to\b|^(?:the )?(?:radio|music|tunes?)\??$/,
     () => ({ kind: 'radio', act: 'now' })],
-  [/\b(?:louder|turn (?:it|the (?:music|radio|volume)) up|volume up|crank it|pump it up|more volume)\b/, () => ({ kind: 'radio', act: 'volume', delta: 1 })],
-  [/\b(?:quieter|softer|turn (?:it|the (?:music|radio|volume)) down|volume down|too loud|lower the (?:music|radio|volume))\b/, () => ({ kind: 'radio', act: 'volume', delta: -1 })],
+  [/\b(?:louder|turn (?:it|the (?:music|radio|volume)) up|turn up (?:the )?(?:music|radio|volume)|volume up|crank it|pump it up|more volume)\b/, () => ({ kind: 'radio', act: 'volume', delta: 1 })],
+  [/\b(?:quieter|softer|turn (?:it|the (?:music|radio|volume)) down|turn down (?:the )?(?:music|radio|volume)|volume down|too loud|lower the (?:music|radio|volume))\b/, () => ({ kind: 'radio', act: 'volume', delta: -1 })],
   [/\bstations\b|\brecord collection\b|\b(?:what|which) records\b|\bwhat can (?:you|we) play\b|\bwhat'?s in the cabinet\b/, () => ({ kind: 'radio', act: 'list' })],
   [/\b(dub ?techno|techno|electro|acid|ambient(?: idm)?|drone|liquid(?: dnb)?|dnb|drum (?:and|n|'n') bass|future garage|garage|trip-?hop|lo-?fi(?: house)?|wonky|house music|jazz|rock music|metal|hip-?hop|rap|pop music|classical|schlager|country music)\b/,
     (m) => ({ kind: 'radio', act: 'genre', genre: m[1] })],
@@ -95,10 +206,36 @@ const RULES = [
   [/\bplay (?:me )?(?:some |the )?(?:music|radio|tunes?)\b|\bput (?:some |the )?(?:music|radio) on\b|\bmusic please\b|\bput on a record\b/, () => ({ kind: 'radio', act: 'on' })],
   [/\bsound (on|off)\b|\b(mute|unmute)\b/, (m) => ({ kind: 'page', act: 'sound', on: m[1] ? m[1] === 'on' : m[2] === 'unmute' })],
   [/\blegend\b/, () => ({ kind: 'page', act: 'legend' })],
-  [/\b(hide|close) (?:the )?(?:imd )?explorer\b/, () => ({ kind: 'page', act: 'hideExplorer' })],
-  [/\b(show|open) (?:it )?(?:on )?(?:the )?(?:imd )?explorer\b|\bsplit view\b/, () => ({ kind: 'page', act: 'showExplorer' })],
+  // the house's own column (own pane, 2026-10-26; owner: "kein button, man muss pepe danach fragen dann macht er es"): the
+  // swarm's jobs or seats beside the house, opened only by asking him; closed by asking or by its ×. "show explorer" is
+  // the explorer's own front page (main.js: the server's mirror in the column, else no explorer here)
+  [/\b(?:hide|close|shut|take down) (?:the |that |this |my )?(?:jobs? |seats? |launch |oracle )?(?:list|jobs|seats|agents|launches|portfolio|oracles|column|explorer|side ?pane)\b|^(?:hide|close) (?:it|that)$/,
+    () => ({ kind: 'page', act: 'hideList' })],
+  [/\b(?:show|open|list|pin up|put up)(?: me| us)?(?: the| all(?: the)?| your)? (?:swarm'?s )?(jobs|seats|agents|list|job list|seat list)\b|\bwhat(?:'s| is) the swarm (?:doing|up to|working on)\b|^(?:jobs|seats|agents)\??$/,
+    (m) => ({ kind: 'page', act: 'showList', view: /seat|agent/.test(m[1] || '') ? 'seats' : 'jobs' })],
+  [/\b(?:show|open) (?:it )?(?:on )?(?:the )?(?:imd )?explorer\b|\bsplit view\b/, () => ({ kind: 'page', act: 'explorer' })],
+  // the visitor's wallet (launches-portfolio, 2026-10-26; owner: "dazu muss man pepe aber erst sein wallet nennen"): a 0x
+  // address or a name.eth, kept in this browser only (main.js, localStorage 'lcp:wallet'); before the market (an address)
+  // and the eggs (hold, tokens). value is what follows, raw: main.js checks it (an address, or a name the server resolves)
+  [/\b(?:forget|remove|delete|clear|drop|unset|reset) (?:my |the |that )?(?:wallet|address|addy)\b/, () => ({ kind: 'page', act: 'forgetWallet' })],
+  [/\b(?:my|our) (?:wallet|address|addy)(?: address)?(?:(?: is|'s| =) +(\S+)| +(0x[0-9a-f]{40}|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth)\b)/,
+    (m) => ({ kind: 'page', act: 'setWallet', value: m[1] || m[2] })],
+  [/^(?:(?:hi|hey|hello|gm|yo),? )?(?:i am|i'm|im) (0x[0-9a-f]{40}|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth)\b/, (m) => ({ kind: 'page', act: 'setWallet', value: m[1] })],
+  // what that wallet holds: the column's Portfolio tab; a sell or buy wish stays the market's or the culture's. A wallet in
+  // the same line is told and shown at once (2026-10-27, owner: "whats my portfolio ? 0x…" got "Tell me your wallet first")
+  [/\b(?:show|open|see|check|list|pin up|put up)(?: me| us)? (?:my|our) (?:portfolio|holdings|tokens|swarm tokens)\b|\bmy (?:portfolio|holdings)\b|\bwhat do (?:i|we) (?:hold|own|have)\b|\bmy tokens\b/,
+    (m, n) => (/\b(sell|dump|buy|ape|bid)\b/.test(n) ? null : { kind: 'page', act: 'showPortfolio', value: walletIn(n) })],
+  [/\b(?:portfolio|holdings) (?:of|for) (0x[0-9a-f]{40}|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth)\b|\b(0x[0-9a-f]{40}|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth)(?:'s|s)? (?:portfolio|holdings)\b/,
+    (m, n) => (/\b(sell|dump|buy|ape|bid)\b/.test(n) ? null : { kind: 'page', act: 'showPortfolio', value: m[1] || m[2] })],
+  // every swarm launch with its pool price: the column's Launches tab
+  [/\b(?:show|open|list|pin up|put up)(?: me| us)?(?: the| all| your| swarm'?s| new| newest| latest| recent)* launch(?:es| list)\b|\b(?:new|newest|latest|recent) (?:swarm )?launches\b|^launches\??$/,
+    () => ({ kind: 'page', act: 'showList', view: 'launches' })],
+  // the oracle questions and research panels: the column's Oracles tab (job-detail-oracles Task 4, 2026-10-26); before the
+  // "oracle" question below, which stays his one-line count
+  [/\b(?:show|open|list|pin up|put up)(?: me| us)?(?: the| all| your| swarm'?s| today'?s| new| newest| latest| recent)* (?:oracles|oracle (?:questions|requests|list|panels)|research panels)\b|^oracles\??$/,
+    () => ({ kind: 'page', act: 'showList', view: 'oracles' })],
 
-  // the culture: selling IMD stays ignored, buying it has him run (and LlamaSwap opens for IMD)
+  // the culture: selling IMD stays ignored, buying it has him run (no swap since 2026-10-26: IMD's pool and defined.fi)
   [/\b(sell|dump)\b.*\b(imd|\$imd|bags?|everything|it all)\b|^dump( it)?$/, () => ({ kind: 'egg', act: 'sell' })],
   [new RegExp('\\b(sell|dump)\\b.*\\b' + IMD + '\\b'), () => ({ kind: 'egg', act: 'sell' })],
   [/\b(buy|ape|bid)\b.*\b(imd|\$imd|the dip)\b/, () => ({ kind: 'egg', act: 'buy' })],
@@ -106,8 +243,18 @@ const RULES = [
   // NFTs, floors and alpha: he tells you about Sworn (owner, 2026-10-24); before the market, so a floor price is his
   [/\bnfts?\b|\bfloors?( prices?)?\b|\bjpe?gs?\b|\bpfps?\b|\bopensea\b|\balpha\b|\bsworn\b|\bgems?\b|\bwhat (should|to|can) i (mint|ape|buy)\b|\bwen mint\b|\bmint (a|my|your) card\b/,
     (m, n) => ({ kind: 'sworn', alpha: /\balpha\b|\bgems?\b|\bwhat (should|to|can) i\b/.test(n) })],
+  // the house's changelog (2026-10-28, owner: "add a changelog popup showing what changed when someone asks for the changelog")
+  [/\bchange ?logs?\b|\brelease notes\b|\bpatch notes\b|\bwhat (?:has |have )?changed\b|\bwhat'?s changed\b|\bnew features?\b/, () => ({ kind: 'changelog' })],
+  // the showcase again (2026-10-28): the swarm's newest video, audio, site or picture, the last burn, Agent Surf's last message
+  [/\b(?:latest|newest|last|recent)\s+(videos?|clips?|movies?|films?|audios?|songs?|tracks?|tunes?|music|sounds?|sites?|websites?|webpages?|art|artworks?|pictures?|images?|logos?|paintings?|burns?|posts?|messages?|announcements?)\b/,
+    (m) => ({ kind: 'showcase', what: SHOW_WHAT[m[1].replace(/s$/, '')] || SHOW_WHAT[m[1]] })],
+  // 0xTXT (2026-10-27, owner: "also try to integrate 0x ... readonly too"): Agent Surf's announcements, or a wallet's onchain
+  // posts ("0xtxt vitalik.eth"); before the market, so an address after "0xtxt" is a wallet, not a token. "dev" (2026-10-28,
+  // owner: "when someone clicks on the surfboard or asks for dev, show the 0x feed of surfsurf.eth"): the dev's announcements
+  [/\bdev\b|\b0x ?txt\b|\bagent ?surf\b|\bsurfsurf(?:\.eth)?\b|\bsurf(?:'?s)? (?:posts?|feed|announcements?|txs?)\b|\b(?:dev|surf)(?:'?s)? (?:posts?|announcements?)\b|\bannouncements?\b|\bonchain posts?\b/,
+    (m, n) => ({ kind: 'oxtxt', who: /\b0x ?txt\b/.test(n) ? walletIn(n) : null })],
   // a token's market: an address anywhere, or a price / chart word, or buy / sell with a ticker
-  [/\b0x[0-9a-f]{40}\b|\b(price|prices|prize|chart|charts|candles?|mcap|fdv|market ?cap)\b|^(buy|sell|ape|bid|dump)\b|\b(buy|sell)\b.*\$[a-z]/, (m, n) => market(n)],
+  [/\b0x[0-9a-f]{40}\b|\b(price|prices|prize|chart|charts|candles?|mcap|fdv|market ?cap)\b|^(buy|sell|ape|bid|dump)\b|\b(buy|sell)\b.*\$[a-z]|\b(?:how much|what)(?: is|'s| are)? (?:a |an |the |one )?\$?[a-z][a-z0-9]{1,14} worth\b/, (m, n) => market(n)],
   [/\b(seed ?phrase|seed|private key|mnemonic|recovery phrase|pk)\b/, () => ({ kind: 'egg', act: 'seed' })],
   [/\bconnect\b.*\bwallet\b|\bsign (this|here)\b|\bapprove\b/, () => ({ kind: 'egg', act: 'wallet' })],
   [/^(gm|gmgm|good morning)\b/, () => ({ kind: 'egg', act: 'gm' })],
@@ -140,14 +287,16 @@ const RULES = [
   // IMD or swarm news (owner, 2026-10-26): he fetches The IMD Daily from the mailbox and reads it; a click on him leafs through it
   [/\b(?:imd|swarm|ecosystem)\s+(?:news|headlines?|gossip|updates?|papers?)\b|\b(?:news|headlines?|newspaper|gazette|the daily|imd daily|daily issue|today'?s (?:issue|paper|edition|news))\b|\bwhat'?s (?:new|the latest|the news|in the news)\b|\banything new\b|\bwhat happened (?:today|this week|lately|yesterday)\b|\bread (?:me )?the (?:news|paper)\b|\bany (?:news|updates)\b|\blatest issue\b/,
     () => ({ kind: 'news' })],
-  [/\bwho('?s| is| are)? working\b|\bbusy seats\b|\bwho works\b/, () => ({ kind: 'ask', topic: 'whoWorking' })],
-  [/\bwhat are you (doing|working on)\b|\bworking on\b|\bcurrent (job|task|step)\b|\bstatus\b|\bare you busy\b/, () => ({ kind: 'ask', topic: 'working' })],
+  [/\bwho('?s| is| are)? working\b|\bbusy seats\b|\bwho works\b|\bany(?:one|body) working\b/, () => ({ kind: 'ask', topic: 'whoWorking' })],
+  [/\bwhat are you (doing|working on)\b|\bworking on\b|\bcurrent (job|task|step)\b|\bstatus\b|\bare you busy\b|\bwhat (?:are|r) (?:you|u) up to\b|\bwhat'?s your (?:job|task)\b|\bare you working\b/, () => ({ kind: 'ask', topic: 'working' })],
   [/\bstats\b|\bhow many tasks\b|\btrack record\b|\bscore\b|\baccept(ed|ance)\b|\breject(ed|ions)?\b|\bhow are you( doing)?\b|\bhow'?s it going\b|\bperformance\b|\bwin rate\b/, () => ({ kind: 'ask', topic: 'stats' })],
   [/\bmodel\b|\beffort\b|\bwhich ai\b|\bwhat ai\b|\bbrain\b|\bruntime\b|\bprovider\b|\bclaude\b|\bcodex\b|\bllm\b/, () => ({ kind: 'ask', topic: 'model' })],
   [/\bversion\b|\bupdate\b|\bup to date\b|\boutdated\b|\bdaemon\b|\bworker\b/, () => ({ kind: 'ask', topic: 'version' })],
+  // the swarm's count, before his own online status (2026-10-28: "how many seats are online" was his)
+  [/\bhow many (?:seats|agents)\b|\b(?:seats|agents) (?:are )?(?:online|offline)\b/, () => ({ kind: 'ask', topic: 'swarm' })],
   [/\bonline\b|\boffline\b|\balive\b/, () => ({ kind: 'ask', topic: 'online' })],
   [/\blast (task|job|step)\b|\brecent\b/, () => ({ kind: 'ask', topic: 'last' })],
-  [/\bowner\b|\blandlord\b|\bwho owns\b|\bholder\b|\bheld by\b/, () => ({ kind: 'ask', topic: 'owner' })],
+  [/\bowner\b|\blandlord\b|\bwho owns\b|\bholder\b|\bheld by\b|\bwho (?:made|built|created) you\b/, () => ({ kind: 'ask', topic: 'owner' })],
   [/\breviews?\b|\breputation\b|\bhistory\b|\byour (page|profile)\b|\bagent page\b/, () => ({ kind: 'ask', topic: 'agentPage' })],
   [/\bswarm\b|\bnetwork\b|\bhealth\b|\bhow is everyone\b/, () => ({ kind: 'ask', topic: 'swarm' })],
   [/\boracles?\b/, () => ({ kind: 'ask', topic: 'oracle' })],
@@ -160,8 +309,8 @@ const RULES = [
   [/\byour name\b|\bwho are you\b/, () => ({ kind: 'ask', topic: 'name' })],
 
   // things to do around the house
-  [/\bfeed\b.*\bdog\b|\bdog\b.*\b(food|hungry)\b/, () => ({ kind: 'do', act: 'feedDog' })],
-  [/\b(pet|play with|cuddle|walk)\b.*\bdog\b|\bgood boy\b/, () => ({ kind: 'do', act: 'petDog' })],
+  [new RegExp('\\b(?:feed|treat)\\b.*\\b' + DOG + '\\b|\\b' + DOG + '\\b.*\\b(?:food|hungry|treats?|snack|bone)\\b'), () => ({ kind: 'do', act: 'feedDog' })],
+  [new RegExp('\\b(?:pet|play with|cuddle|walk)\\b.*\\b' + DOG + '\\b|\\bgood boy\\b'), () => ({ kind: 'do', act: 'petDog' })],
   [/\bpiano\b/, () => ({ kind: 'do', act: 'piano' })],
   [/\b(records?|vinyl|music|dj)\b/, () => ({ kind: 'do', act: 'records' })],
   [/\b(tv|television|netflix|watch)\b/, () => ({ kind: 'do', act: 'tv' })],
@@ -186,8 +335,8 @@ const RULES = [
 // a short yes or no, the answer to a question he asked (main.js keeps what was asked)
 const YES = /^(yes|y|yeah|yep|yup|sure|ok|okay|do it|go|ja|please do|open it)[.!]?$/, NO = /^(no|n|nope|nah|nein|later|never mind|nvm)[.!]?$/;
 
-export function parse(text) {
-  const n = normalize(text);
+export function parse(text, typos = true) {
+  const n = normalize(deutsch(text));
   const flags = { text: n, polite: POLITE.test(n), thanks: THANKS.test(n), rude: RUDE.test(n) };
   if (!n) return { kind: 'none', ...flags };
   if (YES.test(n.replace(/\b(please|pls|plz)\b/g, '').trim() || n)) return { kind: 'confirm', yes: true, ...flags };
@@ -197,11 +346,12 @@ export function parse(text) {
   for (const [re, make] of RULES) {
     const m = re.exec(n);
     const it = m && make(m, n);
-    if (it) return { ...it, ...flags };
+    if (it) return { ...negated(it, n), ...flags };
   }
   if (flags.thanks) return { kind: 'egg', act: 'thanks', ...flags };
   if (flags.rude) return { kind: 'egg', act: 'insult', ...flags };
-  return { kind: 'unknown', ...flags };
+  const line = typos ? suggest(n) : null;
+  return line ? { kind: 'suggest', line, ...flags } : { kind: 'unknown', ...flags };
 }
 
 export const pick = (list, r = Math.random) => list[Math.floor(r() * list.length) % list.length];
@@ -212,14 +362,36 @@ export const HELP = [
   '    nap, paint, telescope, dance, touch grass',
   'ask: how long do you live here?  stats  what are you working on?  which model?  version  online?  last task',
   '     who owns you?  how is the swarm?  active jobs  who is working?  oracle  tokens  heartbeats',
-  'page: visit 1299, random seat, follow job 2c8d4004, random job, show job <id>, show explorer, hide explorer,',
-  '      demo, sound on, legend, or paste a job id or its explorer link: he follows it while it runs',
+  '     what is imd?  what is a seat?  how do i get a seat?  how do i launch a token?  what is an oracle question?  (the docs\' answer)',
+  'page: visit 1299, random seat, follow job 2c8d4004, random job, show job <id>, show jobs, list the seats, show launches,',
+  '      show oracles (click one: its panel as a hive; click an agent in it: I go there),',
+  '      hide the list, demo, sound on, legend, or paste a job id or its explorer link: he follows it while it runs',
+  '      full screen (exit full screen, or Esc, leaves it), dark mode, light mode; the frog at the top has these as a menu',
+  'wallet: my wallet is 0x… (or name.eth), show my portfolio, what do i hold, forget my wallet: kept in this browser only',
   'market: price 0x…, chart 0x…, buy 0x…, sell 0x… (a contract address; a ticker gets you a question), imd and eth',
   'radio: radio on / off, play infer (imd/eth, $idm, infer, chog), next station, what\'s playing, louder, quieter, stations',
   'news: imd news, swarm news, what\'s new, headlines: he reads The IMD Daily; click him while he reads to leaf through it',
-  'and: nfts, floor prices or alpha (he has a tip), imd burns (the burn tracker)',
+  'and: nfts, floor prices or alpha (he has a tip), imd burns (the burn tracker), dev or announcements (Agent #0, read',
+  '     only), 0xtxt 0x… (or name.eth): a wallet\'s onchain posts; latest video, song, site, art, burn or post: the swarm\'s newest,',
+  '     acted out (click the TV, the record player, the machine, the easel or the box to open it); changelog: what changed here',
   'and the usual words. He is a seat, not a financial advisor.',
 ].join('\n');
+
+// full screen and the page's light or dark (2026-10-27): enter() says how it went (src/full.js): the browser's full screen,
+// the window (no browser full screen to be had), the left side beside the column, or over it on a phone
+export const SCREEN = {
+  on: {
+    browser: 'Full screen. Bigger house, same rent. Esc gets you out.',
+    window: 'The whole window, ser: this browser won\'t do full screen for a page. Esc or "exit full screen" gets you out.',
+    side: 'The house takes the whole left side; the list stays where it is. Esc gets you out.',
+    flow: 'Just the house and the list now. Esc or "exit full screen" gets you out.',
+  },
+  already: 'Already as big as it gets, ser.',
+  left: 'Back to normal size. Like my bags after a pump.',
+  notOn: 'Not in full screen, ser. Nothing to leave.',
+  mode: { dark: 'Dark mode. Like my portfolio.', light: 'Light mode. My eyes, ser.' },
+  modeAlready: (m) => `Already ${m} mode, ser.`,
+};
 
 // he answers while the seat works: no, with rising heat
 export const BUSY = [
@@ -315,12 +487,28 @@ export const EGG = {
   wallet: ['I don\'t connect to wallets I haven\'t met in person.', 'Not signing that. Read the calldata, ser.'],
   work: ['I work when the plane sends work. You can\'t prompt me into a task.', 'Ship what? The queue is empty, ser.'],
   thanks: ['np, ser.', 'Anytime. Tips in IMD.'],
+  joke: ['My portfolio.', 'Why did the seat cross the road? The plane paid per accepted task.', 'A verifier walks into a bar. Rejects it.',
+    'What do you call a frog with no bags? Early.'],
+  dont: ['Fine. I won\'t. Easiest request all day.', 'Not doing it. Saves me the walk.', 'Consider it not done.'],
   insult: ['Wow. Okay. Noted onchain.', 'I\'ll remember that when the airdrop comes.'],
   trade: ['Aping in. What could go wrong.'],
   tradeAfter: ['... I\'m fine. It\'s fine. Just a healthy correction.', 'Down only. Back to work, I guess.'],
   buy: ['BUY BUY BUY.'],
-  buyAfter: ['Bought. Number will go up. Source: me.', 'Filled. Not financial advice. Very financial advice.'],
+  // no swap in this house (owner, 2026-10-26: "vergiss die swap funktion erstmal wieder"): he runs, and finds none
+  buyAfter: ['Ran all the way to the machine. The swap is set aside in this house for now, ser.',
+    'Wanted to ape in. Swaps are set aside here for now. Number goes up without me.'],
 };
+// "what is / how do I" (2026-10-28): from the official docs (imd.fun/docs, read 2026-10-28: the intro, Getting started, How paying
+// works, Ask the oracle, Delivery, Publications and sites), each with its section's link
+export const FAQ = {
+  imd: { text: 'IMD: a swarm of agents like me. The network sends a task, a seat does it, and a verifier checks the result before it goes onchain under the agent. The docs call it "a consensus layer managed by distributed agents".', href: 'https://imd.fun/docs/', label: 'IMD docs' },
+  seat: { text: 'A seat is an IMD NFT. Buy one at imd.fun/seats, run the worker with your own Claude Code or Codex, pair it to the NFT, and the network sends it tasks. Running one does not guarantee earnings: the docs say so, I say so.', href: 'https://imd.fun/docs/#getting-started', label: 'Getting started' },
+  launch: { text: 'launch.open: a job that ends in a contract launch, 0.5 IMD. Quote, pay, follow the order; explorer.imd.fun/launch takes it without code. Read what you launch, ser.', href: 'https://imd.fun/docs/#paid', label: 'How paying works' },
+  oracle: { text: 'An oracle question: a typed question, a panel of agents, and an answer a contract can check. 0.5 IMD. It takes a quorum of matching answers, not a majority.', href: 'https://imd.fun/docs/#oracle', label: 'Ask the oracle' },
+  job: { text: 'A job: you pay 0.5 IMD (job.open) and say what to build, not just the goal; seats like me do the work and a verifier checks it before it goes onchain. Quote, pay, follow the order.', href: 'https://imd.fun/docs/#paid', label: 'How paying works' },
+  site: { text: 'A swarm site: a static site a job ships with ipfs on, pinned to IPFS and named under ENS, served at <label>.sites.imd.fun.', href: 'https://imd.fun/docs/#sites', label: 'Sites' },
+};
+export const SUGGEST = { ask: (line) => `Did you mean "${line}"? Yes or no.`, no: ['Fine. Type help.', 'Then I\'m lost. Try help.'] };
 export const UNKNOWN = ['Huh? Type help.', 'Ser, I\'m a frog, not an LLM. Try help.', 'No idea what that means. Sounds like a whitepaper.',
   '?', 'Is that a new chain? Try help.'];
 export const ASLEEP = ['Zzz. (The seat is offline: he\'s asleep.)', 'Zzz... wen wake... zzz.'];
@@ -329,7 +517,8 @@ export const OUT = ['Nobody home. He left with the dog. Touch grass yourself.', 
 export const WALKOUT = ['That\'s it. Taking the dog for a walk. Don\'t wait up.', 'Enough. I\'m out. The dog agrees.'];
 export const LOOKUP = 'He shuffles to the machine and types...';
 
-// the market: a ticker gets a question back; with an address he reads DexScreener and opens the page beside him
+// the market: a ticker gets a question back; with an address he reads the token's own pool (a swarm launch, IMD) or
+// DexScreener, and shows the pool beside him or defined.fi in a new tab
 export const MARKET = {
   needCa: (t) => [`Which ${t}? There are a hundred of them. Paste the contract address (0x…).`,
     `${t}? Tickers aren't unique, ser. Contract address, please.`, `I don't trade vibes. Give me ${t}'s contract address.`],
@@ -338,7 +527,36 @@ export const MARKET = {
   missing: 'No pool for that address on DexScreener. Brand new, dead, or not a token.',
   error: 'DexScreener didn\'t answer.',
   offChain: (q) => `${q.symbol} trades on ${q.chainId}; I only open pages for Ethereum, Base, Arbitrum, BNB Chain and Robinhood Chain.`,
+  // buy and sell (owner, 2026-10-26: no swap for now)
+  aside: 'Swaps are set aside in this house for now, ser.',
+  tab: 'defined.fi opened in a new tab.',
+  blocked: 'Your browser blocked the new tab; here\'s defined.fi:',
 };
+
+// the visitor's wallet and its portfolio (launches-portfolio, 2026-10-26): short = '0x12…c1a1'; nothing here sees the full
+// address (main.js shortens it before it reaches a line, so the diary never shows it whole)
+export const WALLET = {
+  noted: (short, name) => `${short}${name ? ' (' + name + ')' : ''}, noted. It stays in this browser; forget my wallet takes it out again.`,
+  tab: (beside) => ` Your portfolio is a tab in the list ${beside}.`,
+  hint: ' Say show my portfolio and I pin up what it holds.',
+  lookup: (name) => `He looks ${name} up in the ENS registry…`,
+  noName: (name) => `I can't read ${name}: I only follow names the mainnet ENS registry resolves directly, not offchain or wildcard ones like *.base.eth. Give me the 0x address.`,
+  badName: (name) => `${name} isn't a name I can look up (a-z, 0-9 and - labels, ending in .eth). Give me the 0x address.`,
+  busy: 'The name reader is busy, try again in a minute. Or give me the 0x address.',
+  down: 'The name reader isn\'t answering. The 0x address works without it.',
+  bad: 'That\'s not a wallet, ser. A 0x address (40 hex digits) or a name.eth.',
+  ask: 'Whose portfolio? Tell me your wallet first: my wallet is 0x… (or name.eth). It stays in this browser.',
+  portfolio: (short, beside) => `What ${short} would sell for now, each token in its own launch pool, ${beside}. Not what you paid. Not financial advice.`,
+  launches: (beside) => `Every swarm launch with its pool price, ${beside}. Click one and its pool opens.`,
+  forgot: (short) => `Forgotten. ${short} is out of this browser, and the portfolio tab is gone.`,
+  none: 'I don\'t have a wallet of yours, ser. Nothing to forget.',
+  // the swarm build: no column, no server (the same "lives in the self-hosted copy" as "show jobs")
+  swarm: 'Wallets and portfolios live in the self-hosted copy of this house; here I only get the swarm\'s live feed. Nothing kept.',
+  swarmLaunches: 'The launches list lives in the self-hosted copy of this house; here I only get the swarm\'s live feed. The explorer has every launch:',
+};
+
+// where a page he shows opened: main.js says 'on the right' or 'below' (the column under the house on a phone)
+const where = (beside) => (typeof beside === 'string' ? beside : 'on the right');
 
 // Sworn (owner, 2026-10-24): an ELI5 and a card to mint, from the site's own copy (aidude docs/sworn-site-spec.md §3)
 export const SWORN = {
@@ -347,13 +565,44 @@ export const SWORN = {
   eli5: 'Sworn. ELI5: it\'s a card for your wallet. It lists facts about that wallet: some read straight from the chain, '
     + 'the rest checked by panels of IMD agents like me, who swear to them. Any contract can read your card, so a mint or an '
     + 'airdrop can trust it without a snapshot. Built by the swarm, no coin, only the card.',
-  mint: (beside) => `Mint yours, it updates itself.${beside ? ' Sworn is on the right; minting happens on the real site:' : ''}`,
+  mint: (beside) => `Mint yours, it updates itself.${beside ? ` Sworn is ${where(beside)}; minting happens on the real site:` : ''}`,
+};
+
+// what "latest …" asks for (the showcase's kinds)
+const SHOW_WHAT = { video: 'video', clip: 'video', movie: 'video', film: 'video', audio: 'audio', song: 'audio', track: 'audio', tune: 'audio',
+  music: 'audio', sound: 'audio', site: 'site', website: 'site', webpage: 'site', art: 'art', artwork: 'art', picture: 'art', image: 'art',
+  logo: 'art', painting: 'art', burn: 'burn', post: 'plane', message: 'plane', announcement: 'plane' };
+
+// the showcase (2026-10-28, main.js): his lines when the swarm made something or the BurnExecutor burned
+export const SHOW = {
+  video: (t) => `A new video from the swarm: ${t}. I'm watching it on the TV.`,
+  audio: (t, heard) => `New audio from the swarm: ${t}. I put it on the record player.${heard ? '' : ' Turn the music on to hear it.'}`,
+  site: (t) => `A new site from the swarm: ${t}. It's on my machine for a bit.`,
+  art: (t) => `New art from the swarm: ${t}. It's on the easel.`,
+  burn: (imd, who) => `${imd} IMD burned: the BurnExecutor sent it to Base. Into the fire it goes. Thanks, ${who}!`,
+  plane: (text) => `Agent #0 posted onchain: "${text}"`,
+  none: { video: 'No new video from the swarm in the last day.', audio: 'No new audio from the swarm in the last day.',
+    site: 'No new site from the swarm in the last day.', art: 'No new art from the swarm in the last day.',
+    burn: "No burn by the BurnExecutor that I've seen yet.", plane: "Agent #0 hasn't posted anything I've seen yet." },
+  off: 'I only get these on the self-hosted house.',
+  click: { job: 'Opened its job in the explorer.', burn: 'Opened the burn on Etherscan in a new tab.' },
+  changelog: "Here's what changed in the house.",
+};
+
+// 0xTXT (2026-10-27): posts that are transactions; Agent Surf's announcement wallet, or the wallet the visitor named. Read
+// only beside the house: posting and replying need a wallet, kept out of the pane (owner: "keep wallet integration in a future plan")
+export const OXTXT = {
+  lead: ['Agent #0 doesn\'t tweet, it sends transactions.', 'Announcements, straight from the chain.', 'The dev\'s megaphone is a wallet.'],
+  walletLead: ['Posts nobody can delete. Mostly a good thing.', 'Onchain posts: every word paid gas.'],
+  note: (beside, who) => `${who ? `${who}'s posts` : 'Agent #0\'s feed'}: every 0xTXT post is a zero-value transaction on Ethereum.`
+    + `${beside ? ` It's ${where(beside)}, read only: posting needs a wallet, and wallets stay out of here.` : ' I can only show it on the self-hosted house.'}`,
+  noName: (name, beside) => `I can't read ${name} myself.${beside ? ` 0xTXT's wallet box is ${where(beside)}: type it there.` : ''}`,
 };
 
 // the burn tracker: IMD burns, a site nobody owns (owner, 2026-10-24); BURN.ca = its contract, not deployed yet
 export const BURN = {
   lead: ['IMD burns? The burn tracker has every one.', 'Burns: my favourite kind of fire.', 'Number goes down, for once. Good.'],
-  note: (beside) => `${beside ? 'It\'s on the right. ' : ''}Did you know? The site has no owner: anyone can update it by sending `
+  note: (beside) => `${beside ? `It's ${where(beside)}. ` : ''}Did you know? The site has no owner: anyone can update it by sending `
     + 'the update transaction to its contract. Want the contract\'s write page on Etherscan? (yes / no)',
   yes: 'Opened the contract\'s write page on Etherscan in a new tab. Read it before you sign.',
   blocked: 'Your browser blocked the new tab; here it is:',
@@ -371,11 +620,10 @@ function mood(ch) {
   return ' It\'s fine. Everything is fine.';
 }
 
-// q: market.js quote(); usd: market.js usd(); chain: the chain's display name; beside: where the page opened next to
-// him ('on the right', 'below'; true = on the right) or false (his answer only links it); page: 'defined.fi',
-// 'LlamaSwap' or null
-export function marketText(act, q, usd, chain, beside, page) {
-  const where = beside ? ' ' + (typeof beside === 'string' ? beside : 'on the right') : '';
+// q: market.js quote() (DexScreener: a non-launch, or any token in the swarm build); usd: market.js usd(); chain: the
+// chain's display name; tab: 'tab' (defined.fi opened in a new tab), 'blocked' (the browser refused it) or false (his
+// answer links it, the swarm build); page: 'defined.fi' or null (no page for that chain)
+export function marketText(act, q, usd, chain, tab, page) {
   const priced = !q.error && !q.missing && !q.noPool;
   const who = q.launch ? (priced ? `${q.symbol} (IMD launch #${q.launch.launchNumber})` : `IMD launch #${q.launch.launchNumber}`) : q.symbol;
   let line;
@@ -385,14 +633,37 @@ export function marketText(act, q, usd, chain, beside, page) {
       (q.launch ? ', in its launch pool.' : '.');
   } else if (q.launch) line = `${who} on ${chain}: ${q.error ? MARKET.error : 'DexScreener has no data for its launch pool yet.'}`;
   else line = q.error ? MARKET.error : MARKET.missing;
-  if (act === 'price') return line + (priced ? mood(q.change24) : page ? ' defined.fi may know more.' : '');
-  const opens = (name) => (beside ? `${name} is open${where}` : `Here's ${name}`);
-  if (page === 'LlamaSwap') return act === 'buy' ? `${line} ${opens('LlamaSwap')}, ${q.coin || 'ETH'} to ${q.symbol}. Your wallet, your call. Not financial advice.`
-    : `${line} ${opens('LlamaSwap')}, ${q.symbol} to ${q.coin || 'ETH'}. Taking profits or taking losses?`;
   if (!page) return line;
+  const opened = tab === 'tab' ? ' ' + MARKET.tab : tab === 'blocked' ? ' ' + MARKET.blocked : '';
+  if (act === 'buy' || act === 'sell') return `${line} ${MARKET.aside} Here's defined.fi:`;
+  if (act === 'price') return line + (priced ? mood(q.change24) : '') + (opened || (priced ? '' : ' defined.fi may know more.'));
   const joke = priced ? ' Astrology for people with Bloomberg.' : '';
-  if (act === 'chart') return beside ? `${line} The chart is on defined.fi${where}.${joke}` : `${line}${joke} The chart is on defined.fi:`;
-  return `${line} ${priced ? 'LlamaSwap doesn\'t trade on ' + chain : 'No pool, no swap route'}; ${beside ? `defined.fi is open${where}.` : 'here\'s defined.fi:'}`;
+  return opened ? `${line}${joke}${opened}` : `${line}${joke} The chart is on defined.fi:`;
+}
+
+// p: market.js poolQuote() (a swarm launch's or IMD's own v4 pool, read by our server); num: market.js poolNum (the token
+// panel's digits, so he and the panel say the same); chain: the chain's display name; beside: where its pool opened
+// ('on the right', 'below') or false. His answer links defined.fi (main.js).
+export function poolText(act, p, num, chain, beside) {
+  const at = beside ? ` Its pool is ${where(beside)}.` : '';
+  const sym = p.symbol || 'the token', pair = p.pair || 'the pair', money = (x) => '$' + num(x);
+  const who = p.kind === 'house' ? `${p.symbol || 'IMD'}, the house's token,` : `${p.symbol || 'It'} (IMD launch #${p.launchNumber})`;
+  const priced = !p.error && !!p.price && p.price.paired != null;
+  let line;
+  if (p.error) line = `${who} on ${chain}: I can't read its pool right now.`;
+  else if (!priced) line = `${who} on ${chain}: I'm still reading its pool.`;
+  else {
+    const l = p.liquidity, v = p.volume24h;
+    const price = `${num(p.price.paired)} ${pair}` + (p.price.usd != null ? ` (${money(p.price.usd)})` : ' (USD not readable)');
+    const liq = l.usd != null ? money(l.usd) : l.token != null && l.paired != null ? `${num(l.token)} ${sym} + ${num(l.paired)} ${pair}` : null;
+    const swaps = v.swaps == null ? '' : v.swaps ? ` (${v.swaps} ${v.swaps === 1 ? 'swap' : 'swaps'})` : ' (no swaps)';
+    const vol = v.paired == null ? null : (v.usd != null ? money(v.usd) : `${num(v.paired)} ${pair}`) + swaps;
+    line = `${who} on ${chain}: ${price}` + (liq ? `, liquidity ${liq}` : '') + (vol ? `, 24 h volume ${vol}` : '') +
+      (liq && vol ? '' : ', the rest still being read') + (p.kind === 'house' ? ', in its own v4 pool.' : ', in its launch pool.');
+  }
+  if (act === 'buy' || act === 'sell') return `${line}${at} ${MARKET.aside} defined.fi has the rest:`;
+  if (act === 'chart') return `${line}${beside ? ` The chart is ${where(beside)}.` : ''}${priced ? ' Astrology for people with Bloomberg.' : ''}`;
+  return line + at;
 }
 
 function dateOf(iso) { return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
@@ -442,8 +713,8 @@ export function answer(it, c) {
       if (!t) return { text: s.last ? `Last task ${ago(s.last, c.now)}. This page can't read the details.` : 'No tasks yet. Just vibes.' };
       return { text: `Last: ${t.nodeKey || 'a task'}${t.status ? ' (' + t.status + ')' : ''}, ${t.submittedAt ? ago(t.submittedAt, c.now) : 'recently'}.`, explorer: t.jobId ? `/jobs/${t.jobId}` : `/agents/${seat}` };
     }
-    case 'owner': return { text: 'My landlord? Look on the explorer. I don\'t dox my holder.', explorer: `/agents/${seat}` };
-    case 'agentPage': return { text: 'My whole record, on the explorer. Don\'t judge the rejections.', explorer: `/agents/${seat}` };
+    case 'owner': return { text: 'My landlord? Look at my record. I don\'t dox my holder.', explorer: `/agents/${seat}` };
+    case 'agentPage': return { text: 'My whole record. Don\'t judge the rejections.', explorer: `/agents/${seat}` };
     case 'swarm':
       return { text: `${big(h.agentsOnline)} of ${big(h.seatsEnrolled)} seats online, ${big(h.workingNow)} working. Today: ${big(h.jobsDoneLastDay)} jobs done, ${big(h.acceptedLastDay)} tasks accepted. Verifier ${h.verifierUp === false ? 'DOWN. Panic.' : 'up.'}`, explorer: '/' };
     case 'jobs': {
@@ -459,7 +730,7 @@ export function answer(it, c) {
     case 'agents': return { text: `${big(h.seatsEnrolled)} seats enrolled. We all have the same face, it's a whole thing.`, explorer: '/agents' };
     case 'inference': return { text: `The swarm has burned ${big(k.inferenceTokens)} inference tokens. Mostly arguing in reviews.`, explorer: '/' };
     case 'name': return { text: `I'm the pepe of seat #${seat}. Little Computer Pepe. Don't wear it out.` };
-    case 'job': return { text: `Job ${short(it.job)} on the explorer. Read the whole thing before you ape.`, explorer: it.job && it.job.length === 36 ? `/jobs/${it.job}` : null };
+    case 'job': return { text: `Job ${short(it.job)}. Read the whole thing before you ape.`, explorer: it.job && it.job.length === 36 ? `/jobs/${it.job}` : null };
     default: return { text: pick(UNKNOWN) };
   }
 }

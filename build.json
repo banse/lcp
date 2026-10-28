@@ -4,13 +4,13 @@
   "branch": "site",
   "sourceRepository": "banse/swarmlab",
   "sourcePath": "imd/lcp",
-  "sourceCommit": "2a66c8ef7c4f6379594b23cf476a211fba27e1e3",
+  "sourceCommit": "d88b1119d73457abfcd422e4af08ec73889b9c0b",
   "sourceDirty": false,
-  "inputHash": "ae12ac0da52da7a39437f8da39352753994d7d8822b40d2168bbbf4cb37bfd5f",
-  "version": "2026-10-26+2a66c8ef",
-  "generatedAt": "2026-10-26T03:47:49+00:00",
+  "inputHash": "e551f6d12545d868fadecd031ab437e23e759f4755ceb0fe7db8baf62bcff766",
+  "version": "2026-10-28+d88b1119",
+  "generatedAt": "2026-10-28T21:04:32+00:00",
   "launchPools": {
-    "count": 466,
-    "generatedAt": "2026-10-26T03:47:48+00:00"
+    "count": 482,
+    "generatedAt": "2026-10-28T21:04:31+00:00"
   }
 }

@@ -5,7 +5,9 @@ import { W, H, FLIGHTS, ROOMS, WINDOWS, skyPhase } from '../world.js';
 import { MAPPINGS } from '../mapping.js';
 import { IMD_SPOTS, THINGS } from './imd-layout.js';
 
-const S = 3;
+// backing pixels per world unit: 3 (a 1440 x 960 canvas), up to 6 while the house is shown larger in full screen (2026-10-27,
+// scale() below), so it stays as crisp as it is at its usual size
+let S = 3;
 const C = {
   page: '#000000', paper: '#f4f4f2', paper2: '#e6e6e6', wall: '#d6d6d2', greyL: '#bbbbb6', grey: '#9a9a96',
   greyM: '#7d7d79', greyD: '#5c5c58', ink: '#0b0b0b', glass: '#040804', green: '#38d050', greenD: '#208030',
@@ -436,12 +438,20 @@ export const imd = {
         document.fonts ? document.fonts.load(`600 10px ${MONO}`).catch(() => null) : null])
         .then(([p, d]) => { this.pepe = p; this.dog = d; this.ready = true; });
     }
-    if (!this.layer) {
-      this.layer = document.createElement('canvas');
+    if (!this.layer || this.layer.width !== W * S) {
+      this.layer = this.layer || document.createElement('canvas');
       this.layer.width = W * S; this.layer.height = H * S;
       const lg = this.layer.getContext('2d'); lg.setTransform(S, 0, 0, S, 0, 0);
       drawLayer(lg);
     }
+  },
+
+  // full screen (2026-10-27, main.js fitFull): px, the device pixels the house is shown across; 0, its usual size (3)
+  scale(canvas, px) {
+    const s = px ? Math.max(3, Math.min(6, Math.ceil(px / W))) : 3;
+    if (s === S && canvas.width === W * s) return;
+    S = s;
+    this.attach(canvas);
   },
 
   cssWidth(avail) { return Math.min(960, avail) + 'px'; },
@@ -468,6 +478,7 @@ export const imd = {
     }
     if (house.carrier) drawCarrier(g, house.carrier);
     lights(g, s, phase);
+    if (s.plane) plane(g, s.plane, now);                             // Agent Surf posted (showcase): a plane tows the message by
     // at his station the bubble shows the model's namesake; with an icon of the activity too, the two take turns
     const work = workInfo(s), sym = work && s.atStation ? MODEL_SYMBOL[work.family] : null;
     const icon = (house.flash && house.flash.icon) || (m.icon && sym ? (Math.floor(now / 3000) % 2 ? sym : m.icon) : m.icon || sym);
@@ -524,6 +535,7 @@ function carried(g, what, x, y) {
   if (what === 'letter') { box(g, x - 3.5, y - 2.5, 7, 5, C.paper, 0.5); ln(g, x - 3.5, y - 2.5, x, y, 0.35); ln(g, x + 3.5, y - 2.5, x, y, 0.35); }
   else if (what === 'frame') { box(g, x - 4, y - 4, 8, 7, C.paper, 0.6); box(g, x - 2.5, y - 2.5, 5, 4, C.glass, 0); ln(g, x - 2, y, x + 2, y - 1, 0.4, C.green); }
   else if (what === 'parcel') { box(g, x - 5, y - 6, 10, 8, C.paper2, 0.6); box(g, x - 0.7, y - 6, 1.4, 8, C.amber, 0); }
+  else if (what === 'burnbox') burnBox(g, x - 6, y - 8, 12, 10);
 }
 
 // the unfolded paper seen from behind (he sits in the armchair, 2026-10-26): a wide sheet past his shoulders and over his
@@ -542,7 +554,8 @@ function treePlaque(g, p) {
 export const SWORN_FRAME = { x: 314, y: 219, w: 16, h: 16 };            // the hive's box on the wall (no frame, owner 2026-10-26)
 // the small sequencer panel over the piano (owner 2026-10-26: "die kleine tafel übers klavier, aber nur wenn musik
 // gespielt wird"): the playing station's 4 x 16 pattern and bass line as its hook holds them (stationfeed.js grid
-// events; $IDM only, the other stations have no hook), lit in the station's colour, the oscilloscope's width. The
+// events; $IDM only, the other stations have no hook and show $IDM's last read pattern, main.js hookGridSync), lit in
+// the station's colour, the oscilloscope's width. The
 // running step is the house's own clock from the bpm, not the site's; it stays dark when the music is off.
 export const GRID_PANEL = { x: 212, y: 141, pitch: 1.5 };
 function gridPanel(g, grid, color, now) {
@@ -574,6 +587,76 @@ function surfboard(g, cx, cy, w, h, tilt) {
   g.beginPath(); g.moveTo(tail + w * 0.24, h * 0.42); g.lineTo(tail + w * 0.24 + 1.2, h * 0.42 + 2.6); g.lineTo(tail + w * 0.24 + 2.8, h * 0.42); g.closePath(); g.fillStyle = C.ink; g.fill();   // the fin
   box(g, -w * 0.08 - 0.8, h * 0.46, 1.6, 1.3, C.greyD, 0); box(g, w * 0.3 - 0.8, h * 0.4, 1.6, 1.3, C.greyD, 0);   // the brackets, under the board
   g.restore();
+}
+
+// ---------- the showcase (2026-10-28, main.js): what the swarm just made, and what happened on chain ----------
+// where it can be clicked (main.js): the TV, the record player, the machine's screen, the easel, the doorstep box, the fire,
+// the surfboard over the bed; the plane's banner moves (plane() keeps its box on the state)
+export const SHOW_SPOTS = { tv: THINGS.tv, records: { x: 266, y: 180, w: 26, h: 16 }, screen: THINGS.screen, easel: THINGS.easel,
+  box: { x: 35, y: 283, w: 20, h: 16 }, fire: THINGS.fire, surfboard: { x: 66, y: 71, w: 52, h: 18 } };
+
+// an image or a playing video drawn whole into a box, centred; false while it has no picture yet (or the browser refuses)
+function fitMedia(g, el, x, y, w, h) {
+  const iw = el.videoWidth || el.naturalWidth || 0, ih = el.videoHeight || el.naturalHeight || 0;
+  if (!iw || !ih || (el.readyState != null && el.readyState < 2)) return false;
+  const k = Math.min(w / iw, h / ih), dw = iw * k, dh = ih * k;
+  try { g.drawImage(el, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); } catch (e) { return false; }
+  return true;
+}
+
+// imd.fun's mark (its icon.svg: a square with a heavy border, a diamond inside), at x, y, size n
+function imdLogo(g, x, y, n) {
+  box(g, x, y, n, n, '#fff', 0);
+  g.lineWidth = n * 0.1; g.strokeStyle = C.ink; g.strokeRect(x + n * 0.05, y + n * 0.05, n * 0.9, n * 0.9);
+  g.beginPath(); g.moveTo(x + n / 2, y + n * 0.27); g.lineTo(x + n * 0.73, y + n / 2); g.lineTo(x + n / 2, y + n * 0.73); g.lineTo(x + n * 0.27, y + n / 2); g.closePath();
+  g.lineWidth = n * 0.08; g.stroke();
+}
+
+// the box the BurnExecutor sends: brown paper, the IMD mark on its side
+function burnBox(g, x, y, w, h) {
+  box(g, x, y, w, h, C.paper2, 0.6);
+  ln(g, x, y + h * 0.25, x + w, y + h * 0.25, 0.3, C.greyD);
+  imdLogo(g, x + w / 2 - h * 0.3, y + h * 0.33, h * 0.6);
+}
+
+// the machine's screen while a new site shows there: a browser's frame and the site's name (the page itself is a frame
+// main.js lays over this screen; this is what shows while it loads or where a site cannot be framed)
+function siteScreen(g, sc, show, now) {
+  box(g, sc.x, sc.y, sc.w, sc.h, C.paper, 0);
+  box(g, sc.x, sc.y, sc.w, 3.2, C.ink, 0);
+  for (let i = 0; i < 3; i++) disc(g, sc.x + 1.8 + i * 2, sc.y + 1.6, 0.6, [C.red, C.amber, C.green][i], 0);
+  text(g, 'NEW SITE', sc.x + sc.w / 2, sc.y + 9, 3.6, (now >> 9) % 2 ? C.green : C.ink, 700, 'center');
+  if (show.host) {
+    g.save(); g.beginPath(); g.rect(sc.x + 1, sc.y + 10, sc.w - 2, 6); g.clip();
+    text(g, show.host, sc.x + 1.5 - ((now / 60) % Math.max(1, show.host.length * 2.2)), sc.y + 14.6, 2.9, C.ink, 600, 'left');
+    g.restore();
+  }
+}
+
+// the plane (Agent Surf posted): from the right edge to past the left, a small plane towing a banner with the message; its
+// banner's box goes on p.box for the click (main.js)
+function plane(g, p, now) {
+  const f = p.k / p.n, x = 520 - f * 840, y = 17 + Math.sin(now / 650) * 1.6;
+  g.save();
+  g.font = `600 4.6px ${MONO}`;
+  let t = p.text || '';
+  while (t.length > 4 && g.measureText(t).width > 210) t = t.slice(0, -2);
+  if (t !== (p.text || '')) t = t.replace(/\s*\S?$/, '') + '…';
+  const bw = Math.max(30, g.measureText(t).width + 8), bx = x + 24, by = y - 4.5, bh = 9;
+  ln(g, x + 15, y, bx, y, 0.35, C.greyD);                                                  // the tow line
+  const wave = (i) => Math.sin(now / 160 + i * 0.9) * 0.8;
+  g.beginPath(); g.moveTo(bx, by + wave(0));
+  for (let i = 1; i <= 6; i++) g.lineTo(bx + (bw * i) / 6, by + wave(i));
+  for (let i = 6; i >= 0; i--) g.lineTo(bx + (bw * i) / 6, by + bh + wave(i));
+  g.closePath(); g.fillStyle = C.paper; g.fill(); g.lineWidth = 0.5; g.strokeStyle = C.ink; g.stroke();
+  g.fillStyle = C.ink; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(t, bx + 4, y + 0.3);
+  rbox(g, x, y - 2, 15, 4.2, 1.6, C.paper, 0.6);                                          // the fuselage, nose to the left
+  box(g, x + 5, y - 6.5, 4.4, 13, C.paper, 0.6);                                          // the wing, seen from above
+  box(g, x + 12.4, y - 3.6, 2.4, 7.2, C.paper, 0.5);                                      // the tail
+  ln(g, x - 0.6, y - 3.4 * Math.cos(now / 30), x - 0.6, y + 3.4 * Math.cos(now / 30), 0.8, C.ink);   // the propeller
+  disc(g, x + 3, y, 0.9, C.ink, 0);
+  g.restore();
+  p.box = { x: x - 2, y: by - 2, w: bw + 28, h: bh + 4 };
 }
 
 function hexPath(g, cx, cy, r) {
@@ -655,6 +738,7 @@ function drawCarrier(g, c) {                                    // the mail carr
   rbox(g, -9, -18, 6, 8, 1, C.paper2, 0.6);
   if (c.carry === 'letter') { box(g, 4, -19, 6, 4, C.paper, 0.4); }
   if (c.carry === 'parcel') { box(g, 3, -22, 9, 8, C.paper2, 0.5); box(g, 6.8, -22, 1.4, 8, C.amber, 0); }
+  if (c.carry === 'burnbox') burnBox(g, 2.5, -23, 11, 9.5);
   if (c.carry === 'paper') { g.save(); g.translate(7, -19); g.rotate(-0.35); box(g, -4, -1.5, 8, 3, C.paper, 0.45); ln(g, -2.5, 0, 2.5, 0, 0.25, C.greyD); g.restore(); }   // The IMD Daily, folded
   g.restore();
 }
@@ -760,7 +844,8 @@ function props(g, s, now, tick) {
     text(g, 'ERR', sc.x + sc.w / 2, sc.y + sc.h / 2 + 2, 6, C.red, 600, 'center');
     for (let i = 0; i < 6; i++) { const k = (now / 40 + i * 13) % 40; g.globalAlpha = 1 - k / 40; disc(g, sc.x + 6 + ((i * 5) % 18) + k / 6, sc.y - 3 - k, 2 + k / 10, C.greyL, 0.3); }
     g.globalAlpha = 1;
-  } else if (a === 'install') {
+  } else if (s.siteShow) siteScreen(g, sc, s.siteShow, now);    // a new site (showcase): the frame over it shows the page itself
+  else if (a === 'install') {
     text(g, 'INSTALL', sc.x + sc.w / 2, sc.y + 7, 4.2, C.green, 600, 'center');
     box(g, sc.x + 3, sc.y + 11, sc.w - 6, 3, null, 0.5); g.strokeStyle = C.green; g.strokeRect(sc.x + 3, sc.y + 11, sc.w - 6, 3);
     box(g, sc.x + 3, sc.y + 11, (sc.w - 6) * (s.installProgress || 0), 3, C.green, 0);
@@ -786,6 +871,9 @@ function props(g, s, now, tick) {
   const tv = THINGS.tv, tx = tv.x + 3, ty = tv.y + 3, tw = tv.w - 11, thh = tv.h - 6;
   if (s.tvStatic) {
     for (let y = ty; y < ty + thh; y += 1.2) for (let x = tx; x < tx + tw; x += 1.2) { const v = (x * 7 + y * 13 + tick * 5) % 4; g.fillStyle = [C.paper, C.grey, C.greyD, C.ink][v | 0]; g.fillRect(x, y, 1.2, 1.2); }
+  } else if (a === 'tv' && s.tvVideo) {                          // the swarm's new video (showcase, 2026-10-28), whole on black
+    box(g, tx, ty, tw, thh, '#000', 0);
+    if (!fitMedia(g, s.tvVideo, tx, ty, tw, thh)) text(g, '▶', tx + tw / 2, ty + thh / 2 + 2, 6, C.paper, 600, 'center');
   } else if (a === 'tv') {
     box(g, tx, ty, tw, thh, '#0c2a12', 0);
     g.fillStyle = C.green; g.globalAlpha = 0.8;
@@ -797,7 +885,7 @@ function props(g, s, now, tick) {
   if (!s.asleep && !s.away) {
     const f = THINGS.fire;
     for (let i = 0; i < 5; i++) {
-      const hgt = 8 + ((Math.sin(now / 90 + i * 1.7) + 1) * 4) + (a === 'fire' ? 4 : 0), x = f.x + 3 + i * 4;
+      const hgt = 8 + ((Math.sin(now / 90 + i * 1.7) + 1) * 4) + (a === 'fire' ? 4 : 0) + (s.fireBoost > 0 ? 9 + Math.sin(now / 50 + i) * 3 : 0), x = f.x + 3 + i * 4;
       g.beginPath(); g.moveTo(x - 2.6, f.y + f.h); g.quadraticCurveTo(x - 2, f.y + f.h - hgt * 0.6, x, f.y + f.h - hgt); g.quadraticCurveTo(x + 2, f.y + f.h - hgt * 0.6, x + 2.6, f.y + f.h); g.closePath();
       g.fillStyle = i % 2 ? C.amber : C.red; g.fill();
     }
@@ -816,6 +904,16 @@ function props(g, s, now, tick) {
       disc(g, x, y, (2 + k / 25) * grow, puff, 0);
     }
     g.globalAlpha = 1;
+    // a burn (showcase): the box went into the fire, dark billows pour out of the chimney and roll right with the wind over
+    // the open sky above the roof (the chimney top is the picture's top edge: smoke that rose would leave it at once)
+    if (s.chimneyBurst > 0) {
+      for (let i = 0; i < 14; i++) {
+        const k = (now / 22 + i * (100 / 14)) % 100;
+        g.globalAlpha = Math.max(0, 0.85 - k / 120);
+        disc(g, 326 + k * 1.5 + Math.sin(k / 9 + i) * 2.5, 10 - k * 0.06 + Math.sin(k / 6 + i * 2) * 1.6, 3 + k / 11, i % 3 ? C.greyD : C.ink, 0);
+      }
+      g.globalAlpha = 1;
+    }
   }
   // the attic window: lit while he does premium work, in the provider's colour
   if (work && work.premium) {
@@ -873,6 +971,7 @@ function props(g, s, now, tick) {
   if (s.paper) { g.save(); g.translate(30, 262.6); g.rotate(-0.55); rbox(g, -6, -1.6, 12, 3.2, 0.6, C.paper2, 0.5); ln(g, -4, 0, 4, 0, 0.3, C.greyD); g.restore(); }   // the day's Daily, rolled in the slot
   if (s.mailbox > 0 || s.outgoing) { box(g, 34, 256, 1.6, 10, C.ink, 0); box(g, 35.6, 256, 5, 3.4, C.red, 0.4); } else box(g, 34, 266, 8, 1.6, C.greyD, 0);
   if (s.parcel) { box(g, 40, 288, 12, 10, C.paper2, 0.6); box(g, 45.3, 288, 1.4, 10, C.amber, 0); ln(g, 40, 291, 52, 291, 0.3); }
+  if (s.burnbox) burnBox(g, 38.5, 286, 14, 12);                     // the BurnExecutor's box on the doorstep (showcase)
   if (s.doorOpen) { box(g, 56, 252, 4, 38, C.page, 0); box(g, 46, 252, 10, 38, C.paper, 0.6); disc(g, 48, 271, 0.8, C.ink, 0); }
   else { box(g, 55, 252, 6, 38, C.paper2, 0.6); disc(g, 59, 271, 0.8, C.ink, 0); }
   box(g, 53.5, 250, 9, 2, C.ink, 0);
@@ -953,6 +1052,8 @@ function props(g, s, now, tick) {
   if (a === 'paint') {
     const k = 1 + Math.floor(now / 420) % 18;
     for (let i = 0; i < k; i++) { g.fillStyle = [C.green, C.blue, C.red, C.amber, C.greenD][i % 5]; g.beginPath(); g.ellipse(e.x + 3 + (i * 5) % 12, e.y + 3 + (i * 3) % 10, 1.6, 1, i, 0, Math.PI * 2); g.fill(); }
+  } else if (s.easelArt && s.easelArt.img && fitMedia(g, s.easelArt.img, e.x + 0.8, e.y + 0.8, e.w - 1.6, e.h - 1.6)) {
+    // the swarm's newest picture or token logo (showcase, 2026-10-28) stands on the easel until the next one
   } else { ln(g, e.x + 3, e.y + 11, e.x + 15, e.y + 9, 0.3, C.grey); }
 }
 

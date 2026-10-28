@@ -74,12 +74,13 @@ export class Radio {
     this.temp = null;             // {key, why: 'follow' | 'sad'}: a station put on for a while, the visitor's choice kept
     this.tempOn = null;           // 'records': he put a record on himself while the visitor's radio is off (owner, 2026-10-26)
     this.tempTimer = null;
+    this.held = null;             // why the radio is silent for a while (2026-10-28: 'showcase', the swarm's audio plays instead)
     this.tracks = 0;              // finished tracks heard this visit (records on the wall)
     this.frame = null;
   }
 
   get on() { return this.saved.on; }
-  get wanted() { return this.saved.on || !!this.tempOn; }
+  get wanted() { return (this.saved.on || !!this.tempOn) && !this.held; }
   get key() { return (this.temp && this.temp.key) || this.saved.key; }
   get station() { return station(this.key); }
   get gain() { return clamp(this.saved.gain * (this.night ? GAIN.night / GAIN.start : 1) * (this.boost ? GAIN.boost : 1)); }
@@ -92,7 +93,9 @@ export class Radio {
   armAutostart() {
     if (!this.doc || this.armed || this.live || !this.saved.on) return;
     this.armed = true;
-    const start = () => { this.doc.removeEventListener('pointerdown', start, true); this.doc.removeEventListener('keydown', start, true); this.armed = false; this.sync(); };
+    // the frame starts after the event, not inside it (2026-10-28): built inside the Enter that sends a visitor's first line,
+    // it swallowed that line; the click or key still counts as the activation autoplay needs
+    const start = () => { this.doc.removeEventListener('pointerdown', start, true); this.doc.removeEventListener('keydown', start, true); this.armed = false; setTimeout(() => this.sync(), 0); };
     this.doc.addEventListener('pointerdown', start, true); this.doc.addEventListener('keydown', start, true);
     this.onChange(this);
   }
@@ -136,10 +139,11 @@ export class Radio {
     clearTimeout(this.tempTimer); this.tempOn = null; this.sync();
   }
 
-  // later: the state is kept, the frame waits for sync() (he walks to the record player first)
+  // later: the state is kept, the frame waits for sync() (he walks to the record player first); the change is told at once
+  // all the same, as tune() tells it (2026-10-27: the frog's menu shows the visitor's choice, not when the music starts)
   setOn(on, later = false) {
     this.saved.on = !!on; this.save();
-    if (!later) this.sync();
+    if (!later) this.sync(); else this.onChange(this);
   }
 
   // a station: the visitor's choice (saved), or one put on for a while (temp); true when the station changed
@@ -153,6 +157,15 @@ export class Radio {
   }
 
   next(later = false) { const i = STATIONS.findIndex((s) => s.key === this.key); return this.tune(STATIONS[(i + 1) % STATIONS.length].key, null, later); }
+
+  // silent for a while, the visitor's choice kept (the swarm's new audio at the record player, main.js showcase); release
+  // gives the station back, true when it was held for that reason
+  hold(why) { this.held = why; this.sync(); }
+  release(why) {
+    if (this.held !== why) return false;
+    this.held = null; this.sync();
+    return true;
+  }
 
   // back to the visitor's own choice after a temporary station
   restore(why = null, later = false) {
