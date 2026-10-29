@@ -155,6 +155,26 @@ export function suggest(n) {
   return changed && parse(line, false).kind !== 'unknown' ? line : null;
 }
 
+// the swarm help desk (2026-10-28, ideas lcp-swarm-help-desk.md): a visitor's job, read through the server (api.imd.fun sends
+// no CORS), what stopped it or what it delivered, and the next step; an error code of the plane in plain words. What the visitor
+// wanted ("check job <id> for dark mode, mainnet") stays in the browser.
+// the prompt checker's words; a job id or link in the same line is loaded into it ("check prompt of <explorer link>")
+const CHECKER = /\b(?:check|review|lint|improve|test)\b(?: me)?(?: my| this| a| the| our| its)? (?:prompt|brief|job body|body|objective)s?\b|\bprompt[- ]?check(?:er)?\b|\bbrief check\b|\bfree check\b/;
+const HELP_WORDS = /\b(?:help|stuck|blocked|block|failed|fail|failing|broken|wrong|why|what happened|not working|doesn'?t work|didn'?t work|isn'?t working|issue|problem|check|support)\b/;
+const MY_JOB_STUCK = /\b(?:my|our|the) (?:job|order|request|launch|site)\b.*\b(?:stuck|blocked|failed|broken|wrong|not working|didn'?t work|isn'?t working|not what i wanted)\b|\bwhy (?:is|did|was) (?:my|our) (?:job|order|launch|site)\b|\bhelp (?:me )?with (?:my|a|our) (?:job|order|launch|request)\b|^(?:job |swarm )?support\??$|\bswarm support\b/;
+// "check job <id> for dark mode, mint button" -> "dark mode, mint button"; the raw text, so commas and words survive
+export function helpWords(text) {
+  const m = /\bfor\b\s*:?\s*(.+)$/is.exec(String(text || ''));
+  const w = m && m[1].replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
+  return w ? w.slice(0, 200) : null;
+}
+// an error code of the plane named in a line (`payer_not_owner`, or a pasted {"error":"quote_expired"}), from the raw text: the
+// normalized one loses the underscores
+export function errorCodeIn(text) {
+  for (const m of String(text || '').toLowerCase().matchAll(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g)) if (ERRORS[m[0]] || REASON_KIND[m[0]]) return m[0];
+  return null;
+}
+
 // a wish with "don't" before it (2026-10-28): he doesn't do it; "don't want music" is the radio off. "why don't you …" stays a wish
 const NEG = /\b(?:don'?t|do not|dont|never)\b/, NEG_NOT = /\bwhy (?:don'?t|dont|not)\b/;
 function negated(it, n) {
@@ -166,10 +186,19 @@ function negated(it, n) {
 
 // first match wins: page commands, then the jokes, then questions, then things to do
 const RULES = [
-  [/^(help|commands|\?|what can (you|i) (do|say|ask)|how does this work)\b/, () => ({ kind: 'page', act: 'help' })],
+  [/^(help|commands|\?|what can (you|i) (do|say|ask)|how does this work)\b(?!.*\b(?:job|order|launch|request)\b)/, () => ({ kind: 'page', act: 'help' })],
+  // awesome-imd (2026-10-29, owner: '"awesome imd" can be the trigger'): the community's list of what is built on IMD, in a window
+  [/\bawesome[- ]?imd\b|\bawesome[- ]list\b|\b(?:imd|community) projects\b|\bprojects (?:are |were |got )?(?:built |made )?(?:on|with|around|for) imd\b|\bwhat(?:'s| is| has been| got)? built (?:on|with) imd\b/,
+    () => ({ kind: 'awesome' })],
   // "what is / how do I" (2026-10-28, ideas lcp-talk-rule-engine): a short answer from the official docs and its link, before
   // the rules that count things, so "how do i launch a token" is no launch count and "what is an oracle question" no oracle count
   [/./, (m, n) => faq(n)],
+  // the prompt checker (2026-10-28): the plane's free check and what we learned, in a window (the talk line takes 160 characters)
+  [CHECKER, (m, n) => ({ kind: 'checker', job: null })],
+  [new RegExp('\\bjob #?' + JOB + '\\b'), (m, n) => (HELP_WORDS.test(n) ? { kind: 'help', job: m[1] } : null)],
+  // "check 49cbfcb8" (2026-10-29, owner: "a job check should start also when only check followed by job id or explorer link is posted")
+  [new RegExp('^(?:please |pls |can you |could you )?(?:check|review|look at|look into)(?: out| on)?(?: the| my| this| our)? #?' + JOB + '\\b'), (m) => ({ kind: 'help', job: m[1] })],
+  [MY_JOB_STUCK, () => ({ kind: 'help', job: null })],
   [/\b(?:tell|know) (?:me |us )?(?:a |any |some |another )?jokes?\b|\bmake me laugh\b|\bsay something funny\b/, () => ({ kind: 'egg', act: 'joke' })],
   [/\brandom (active )?job\b/, () => ({ kind: 'page', act: 'randomJob' })],
   [/\b(random|any)( busy)? seat\b|\bsurprise me\b/, () => ({ kind: 'page', act: 'random' })],
@@ -342,11 +371,18 @@ export function parse(text, typos = true) {
   if (YES.test(n.replace(/\b(please|pls|plz)\b/g, '').trim() || n)) return { kind: 'confirm', yes: true, ...flags };
   if (NO.test(n)) return { kind: 'confirm', yes: false, ...flags };
   const ref = jobRef(text);
+  if (CHECKER.test(n.replace(/https?:\S+/g, ' '))) {
+    const id8 = !ref && /\b([0-9a-f]{8})\b/.exec(n.replace(/https?:\S+/g, ' '));   // "check the prompt of 49cbfcb8"
+    return { kind: 'checker', job: ref && !ref.oracle ? ref.job : id8 && /\d/.test(id8[1]) ? id8[1] : null, ...flags };
+  }
+  if (ref && !ref.oracle && HELP_WORDS.test(n.replace(/https?:\S+/g, ' '))) return { kind: 'help', job: ref.job, words: helpWords(text), ...flags };
   if (ref && !/^(explain|what)\b/.test(n)) return { kind: 'page', act: 'load', ...ref, ...flags };
+  const code = errorCodeIn(text);
+  if (code) return { kind: 'errcode', code, ...flags };
   for (const [re, make] of RULES) {
     const m = re.exec(n);
     const it = m && make(m, n);
-    if (it) return { ...negated(it, n), ...flags };
+    if (it) return { ...negated(it, n), ...(it.kind === 'help' && !it.words ? { words: helpWords(text) } : {}), ...flags };
   }
   if (flags.thanks) return { kind: 'egg', act: 'thanks', ...flags };
   if (flags.rude) return { kind: 'egg', act: 'insult', ...flags };
@@ -363,6 +399,9 @@ export const HELP = [
   'ask: how long do you live here?  stats  what are you working on?  which model?  version  online?  last task',
   '     who owns you?  how is the swarm?  active jobs  who is working?  oracle  tokens  heartbeats',
   '     what is imd?  what is a seat?  how do i get a seat?  how do i launch a token?  what is an oracle question?  (the docs\' answer)',
+  'help: check <job id or explorer link>, or help with job <id>: what stopped it or what it did, the next step, its newest version;',
+  '      check my prompt (or: check the prompt of <job link or id>): the plane\'s free check and what we learned on the swarm;',
+  '      check job <id> for <what you wanted>: your words against its brief; what does <error_code> mean: the docs\' card',
   'page: visit 1299, random seat, follow job 2c8d4004, random job, show job <id>, show jobs, list the seats, show launches,',
   '      show oracles (click one: its panel as a hive; click an agent in it: I go there),',
   '      hide the list, demo, sound on, legend, or paste a job id or its explorer link: he follows it while it runs',
@@ -371,11 +410,24 @@ export const HELP = [
   'market: price 0x…, chart 0x…, buy 0x…, sell 0x… (a contract address; a ticker gets you a question), imd and eth',
   'radio: radio on / off, play infer (imd/eth, $idm, infer, chog), next station, what\'s playing, louder, quieter, stations',
   'news: imd news, swarm news, what\'s new, headlines: he reads The IMD Daily; click him while he reads to leaf through it',
+  'awesome imd: the community\'s list of what is built on IMD, every project with its link, in a window',
   'and: nfts, floor prices or alpha (he has a tip), imd burns (the burn tracker), dev or announcements (Agent #0, read',
   '     only), 0xtxt 0x… (or name.eth): a wallet\'s onchain posts; latest video, song, site, art, burn or post: the swarm\'s newest,',
   '     acted out (click the TV, the record player, the machine, the easel or the box to open it); changelog: what changed here',
   'and the usual words. He is a seat, not a financial advisor.',
 ].join('\n');
+
+// the help text of a copy without a server (2026-10-29, the swarm copy): no job is read there (api.imd.fun sends no CORS for /jobs/:id
+// and refuses the free check from a browser, measured 2026-10-29), so its help desk lines say what it keeps
+const HELP_SWARM_DESK = [
+  'help: what does <error_code> mean (or paste the plane\'s {"error": …}): the docs\' card; a job: paste its explorer link and I',
+  '      point you to it (this copy reads no jobs); check my prompt: what we learned on the swarm, the free check on the explorer;',
+];
+export function helpFor(server) {
+  if (server) return HELP;
+  const lines = HELP.split('\n'), i = lines.findIndex((l) => l.startsWith('help: '));
+  return i < 0 ? HELP : [...lines.slice(0, i), ...HELP_SWARM_DESK, ...lines.slice(i + 3)].join('\n');
+}
 
 // full screen and the page's light or dark (2026-10-27): enter() says how it went (src/full.js): the browser's full screen,
 // the window (no browser full screen to be had), the left side beside the column, or over it on a phone
@@ -508,6 +560,193 @@ export const FAQ = {
   job: { text: 'A job: you pay 0.5 IMD (job.open) and say what to build, not just the goal; seats like me do the work and a verifier checks it before it goes onchain. Quote, pay, follow the order.', href: 'https://imd.fun/docs/#paid', label: 'How paying works' },
   site: { text: 'A swarm site: a static site a job ships with ipfs on, pinned to IPFS and named under ENS, served at <label>.sites.imd.fun.', href: 'https://imd.fun/docs/#sites', label: 'Sites' },
 };
+// the help desk's cards (2026-10-28): the docs (imd.fun/docs, read 2026-10-28) say what a code means; our measurements (the private sources: docs/helpdesk-sources.md;
+// ideas lcp-swarm-help-desk.md) say what happens around it. Every card ends at a link; Pepe never promises a fix works.
+const DOCS = 'https://imd.fun/docs/';
+const DOCS_PAID = { href: DOCS + '#paid', label: 'How paying works' };
+export const ERRORS = {
+  payer_not_owner: { text: 'payer_not_owner: a job.continue paid from another wallet than the one that paid the project. Only that wallet can continue it; the plane refuses it before anything moves.', href: DOCS + '#continue', label: 'Continuing a project' },
+  invalid_parent: { text: 'invalid_parent: the job you continue is not the newest of its project, or the project moved. Continue its newest job (project.head on the job).', href: DOCS + '#continue', label: 'Continuing a project' },
+  origin_not_allowed: { text: 'origin_not_allowed: paid calls come from a server, not from a browser on another site. To pay without code, use the explorer\'s Launch page.', href: 'https://explorer.imd.fun/launch', label: 'explorer Launch' },
+  quote_expired: { text: 'quote_expired: a quote lives 600 seconds. Quote again, with a new requestKey, and sign within the ten minutes.', ...DOCS_PAID },
+  invalid_input: { text: 'invalid_input: the body breaks a rule; its problems list names the fields. Nothing was charged. The free check (POST /requests/check) finds these before you quote.', ...DOCS_PAID },
+  invalid_request: { text: 'invalid_request: the request itself is malformed; its detail says how. Nothing was charged.', ...DOCS_PAID },
+  action_not_enabled: { text: 'action_not_enabled: that action is not open on this plane right now. GET /requests/capabilities lists the ones that are.', ...DOCS_PAID },
+  payment_rejected: { text: 'payment_rejected: the payment did not go through; its reason says why, insufficient_funds for a wallet short of IMD.', ...DOCS_PAID },
+  paid_request_unavailable: { text: 'paid_request_unavailable: a provider or a chain failed on the plane\'s side. The order is kept; try again later.', ...DOCS_PAID },
+  request_token_required: { text: 'request_token_required: the quote, submit and order routes need the request token; every other read is public.', ...DOCS_PAID },
+  request_limit: { text: 'request_limit: 300 requests and 30 quotes a minute, per IP and per token, and a check or an import counts as a quote. Wait a minute.', ...DOCS_PAID },
+  request_too_large: { text: 'request_too_large: the body is over the limit, 16 KiB (4 KiB for an import).', ...DOCS_PAID },
+  too_many_reads: { text: 'too_many_reads: public reads are capped at 120 a minute per IP on api.imd.fun. Wait for Retry-After, or read through the explorer.', href: DOCS + '#errors', label: 'Errors' },
+  order_not_found: { text: 'order_not_found: no order with that id. Check the id the quote gave you.', ...DOCS_PAID },
+  quorum_unreachable: { text: 'quorum_unreachable: the quorum asks for more matching answers than seats took work in the last 24 hours. Lower it: every one of the quorum must match, it is no majority.', href: DOCS + '#oracle-body', label: 'Ask the oracle' },
+  not_answerable: { text: 'not_answerable: the screen judged the question unanswerable from its sources. Pin the reading in definitions first.', href: DOCS + '#oracle-body', label: 'Ask the oracle' },
+  objective_too_large: { text: 'objective_too_large: request, context and the draft objective together must fit 8,000 characters. Shorten them.', href: DOCS + '#workflow-body', label: 'Open a workflow' },
+  report_not_ready: { text: 'report_not_ready: an audit\'s report exists once its judge is accepted. Ask again later.', href: DOCS + '#jobs', label: 'Jobs' },
+  unknown_audit: { text: 'unknown_audit: report.md is there only for an audit job.', href: DOCS + '#jobs', label: 'Jobs' },
+  unknown_label: { text: 'unknown_label: no site stands under that label.', href: DOCS + '#publications', label: 'Publications and sites' },
+  invalid_label: { text: 'invalid_label: a label is 3 to 32 lowercase letters, digits and hyphens, no hyphen first or last.', href: DOCS + '#publications', label: 'Publications and sites' },
+  member_sites_closed: { text: 'member_sites_closed: publishing a site under your own seat is closed on api.imd.fun today. A job with ipfs hosts a site.', href: DOCS + '#sites', label: 'Sites and ENS' },
+};
+// what stopped a blocked job, by the kind in its blockedReason ("node build_website: needs_input: …")
+export const REASON_KIND = { needs_input: 'input', runtime_error: 'machine', clone_failed: 'machine', internal_error: 'machine',
+  undeliverable_task: 'machine', attempts_exhausted: 'machine', analysis_failed: 'check', local_build_failed: 'check', build_failed: 'check',
+  tests_failed: 'check', launch_manifest_failed: 'check', plan_refused: 'check', repo_refused: 'check', missing_required_file: 'check' };
+const REASON_WORDS = {
+  input: 'it needs input: a value or a decision the brief did not give. The worker asked instead of guessing.',
+  machine: 'it failed on the machines that ran it, not on your brief as far as the record shows.',
+  check: 'it did not pass its own check: the brief or the code needs a change.',
+};
+const wallet = (a) => (typeof a === 'string' && /^0x[0-9a-f]{40}$/.test(a) ? a.slice(0, 6) + '…' + a.slice(-4) : null);
+const cut = (t, n) => (t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t);
+// "node build_website: needs_input: The …" -> {node, kind, text}; "node audit_judge exhausted its attempts" -> attempts_exhausted
+export function reasonOf(r) {
+  const t = String(r || '');
+  let m = /^node ([a-z0-9_]+): ([a-z_]+)(?::\s*([\s\S]*))?$/.exec(t);
+  if (m) return { node: m[1], kind: m[2], text: (m[3] || '').trim() };
+  m = /^node ([a-z0-9_]+) exhausted its attempts/.exec(t);
+  return m ? { node: m[1], kind: 'attempts_exhausted', text: '' } : { node: null, kind: null, text: t.trim() };
+}
+const CHAIN_WORDS = [[/\b(?:mainnet|ethereum)\b/, 1, 'Ethereum mainnet'], [/\bsepolia\b/, 11155111, 'Sepolia'], [/\brobinhood\b/, 4663, 'Robinhood Chain'], [/\bbase\b/, 8453, 'Base']];
+const CHAIN_NAME = { 1: 'Ethereum mainnet', 11155111: 'Sepolia', 4663: 'Robinhood Chain', 8453: 'Base' };
+// "check job <id> for …": the visitor's words against the job's fields and its brief (the browser only; the delivered files
+// are a later step). Facts, never a verdict.
+export function checkLines(d, words) {
+  const h = d.help || {}, out = [], brief = String(d.objective || '').toLowerCase().replace(/[\u2010-\u2015]/g, '-');   // a brief's non-breaking hyphen (U+2011) reads as "-"
+  const w = String(words || '').toLowerCase();
+  const chain = CHAIN_WORDS.find(([re]) => re.test(w));
+  if (chain && !h.launch) out.push(`you said ${chain[2]}: this job launched nothing on a chain.`);
+  if (chain && h.launch) out.push(h.chainId === chain[1] ? `on ${chain[2]}: yes.` : `you said ${chain[2]}; it launched on ${CHAIN_NAME[h.chainId] || 'chain ' + h.chainId} (a launch body without chainId goes to Sepolia, the default).`);
+  if (/\b(?:host|hosted|hosting|site|website|ipfs|online)\b/.test(w)) out.push(h.site ? `hosted: ${h.site}${h.siteStatus && h.siteStatus !== 'named' ? ' (' + h.siteStatus + ')' : ''}.` : 'not hosted: the job asked for no site (ipfs), or it was not named yet.');
+  if (/\b(?:github|repo|repository|source|code)\b/.test(w)) out.push(h.repo ? `delivered to ${h.repo.replace('https://github.com/', '')}${h.commit ? ' at ' + h.commit.slice(0, 7) : ''}.` : 'no GitHub delivery recorded.');
+  const items = w.split(/,|;|\band\b|\n/).map((x) => x.replace(/\b(?:on|in|a|an|the|with|it|should|have|has|be|is|that|was|i|wanted|want)\b/g, ' ').replace(/[^a-z0-9#$.\- ]/g, ' ').replace(/\s+/g, ' ').trim()).filter((x) => x.length >= 3);
+  for (const it of items.slice(0, 6)) {
+    if (chain && chain[0].test(it) || /^(?:host|hosted|hosting|site|website|ipfs|online|github|repo|repository|source|code)$/.test(it)) continue;   // checked as fields
+    const words2 = it.split(' ').filter((x) => x.length >= 3);
+    out.push(words2.length && words2.every((x) => brief.includes(x)) ? `"${it}": in the brief.` : `"${it}": not in the brief. The swarm builds what is written.`);
+  }
+  if ((h.verdicts || []).some((v) => v.evaluation === 'structural')) out.push('its website step was checked for structure only: the files are where they belong, not what the page does.');
+  return out;
+}
+// the bigger picture (2026-10-28, owner: "should also check for predessor and continuations, as well as other jobs from same initiator
+// around the same time"): /proxy/panels/context -> sentences. The predecessor stopped the same way, the project moved on later, the
+// same wallet's other jobs within the hours around it and how many of them stopped at the same step.
+const gap = (a, b) => { const h = Math.abs(Date.parse(b) - Date.parse(a)) / 3600000; return h < 1 ? Math.max(1, Math.round(h * 60)) + ' min' : Math.round(h * 10) / 10 + ' h'; };
+export function contextLines(d, ctx) {
+  if (!ctx || !ctx.id) return [];
+  const out = [], mine = reasonOf(d.blockedReason), same = (r) => { const o = reasonOf(r); return !!o.kind && o.kind === mine.kind && o.node === mine.node; };
+  const p = ctx.parent;
+  if (p) out.push(`It continues ${short(p.id)}${p.state ? ' (' + p.state + ')' : ''}${d.state === 'blocked' && p.state === 'blocked' && same(p.reason) ? ', which stopped at the same step for the same reason: the continuation did not add what was missing' : ''}.`);
+  const later = ctx.later || [];
+  if (later.length) {
+    const fixed = d.state === 'blocked' && later.find((v) => v.state === 'completed');
+    const last = later[later.length - 1];
+    out.push(fixed ? `The project moved on: ${short(fixed.id)} completed ${gap(d.help && d.help.createdAt || fixed.at, fixed.at)} later${later.length > 1 ? ', and its newest version is ' + short(last.id) + ' (' + last.state + ')' : ''}. Nothing to continue here.`
+      : `${later.length} later version${later.length > 1 ? 's' : ''}; the newest, ${short(last.id)}, is ${last.state || 'unknown'}: "check ${short(last.id)}" looks at it.`);
+  }
+  const w = ctx.payer;
+  if (w && !w.busy && (w.jobs || []).length) {
+    const js = w.jobs, n = js.length + (w.more || 0);
+    const by = (st) => js.filter((x) => x.state === st).length;
+    const sameStep = d.state === 'blocked' ? js.filter((x) => x.state === 'blocked' && same(x.reason)).length : 0;
+    const dup = js.filter((x) => x.title && x.title === d.title).length;
+    const unknown = js.filter((x) => !x.state).length;
+    const parts = [by('completed') && `${by('completed')} completed`, by('blocked') && `${by('blocked')} blocked`, by('executing') && `${by('executing')} running`,
+      unknown && `${unknown} older than the ${w.listDays} days I keep`].filter(Boolean);
+    out.push(`The same wallet paid for ${n} other job${n > 1 ? 's' : ''} within ${w.hours} hours of it${parts.length ? ': ' + parts.join(', ') : ''}.` +
+      (dup ? ` ${dup} with the same objective.` : '') +
+      (sameStep ? ` ${sameStep} of them stopped at the same step (${mine.kind}): a pattern, so look at how those briefs ask for it, not at bad luck.` : ''));
+  } else if (w && !w.busy) out.push(`No other job from the same wallet within ${w.hours} hours.`);
+  return out;
+}
+// the free plane check of the job's prompt, run whenever a job is posted (2026-10-28, owner: "when a job is posted the free plane
+// check should always run and show up when a blocker is found"): only a blocker is said, with how to see the whole check
+const blockerText = (b) => (typeof b === 'string' ? b : b && typeof b === 'object' ? [b.code, b.detail || b.message].filter(Boolean).join(': ') : String(b));
+export function checkLine(d, check) {
+  if (check && check.stale) return staleLine(check);
+  if (!check) return null;
+  const n = check.others || 0;
+  const pick = n ? ` The same wallet ordered ${n} other job${n > 1 ? 's' : ''} around then: pick one in the window and I'll look at it.` : '';
+  if (check.failed) return 'The plane\'s free check did not answer just now (checks are capped per minute); ask me again in a minute.' + pick;
+  const bs = Array.isArray(check.blockers) ? check.blockers : [], ws = Array.isArray(check.warnings) ? check.warnings : [];
+  const what = check.next ? 'of a next version from it, with its prompt,' : 'of its prompt';      // a followed path ends in one
+  // the newest of its project, posted itself (2026-10-29): its own order ran, so a next version from it is what was checked
+  const lead = check.lone ? 'Nothing continued it: it is where its project stands. ' : '';
+  const open = check.shown ? 'the whole check is open.' : `"check the prompt of ${short(d.id)}" shows the whole check.`;
+  const first = (x) => cut(blockerText(x), 220).replace(/\.+$/, '');
+  if (!bs.length && ws.length) return `${lead}The plane's free check ${what} finds no blockers but warns: ${first(ws[0])}${ws.length > 1 ? ` (and ${ws.length - 1} more)` : ''}; ${open}${pick}`;
+  if (!bs.length) return check.next ? `${lead}The plane's free check ${what} finds no blockers.${pick}` : null;
+  const how = check.guessed ? ` (its objective, read with the skill of its first step, ${check.guessed})` : '';
+  return `${lead}The plane's free check ${what} finds ${bs.length} blocker${bs.length > 1 ? 's' : ''} today${how}: ${first(bs[0])}${bs.length > 1 ? ' (and more)' : ''}. Fix that first; ${open}${pick}`;
+}
+// a job that ran and that nothing continued (2026-10-29, owner: "skip the free check and do the follow-up job search instead"): its quote
+// is not checked again; the same wallet's other jobs around then are in the window to pick from
+function staleLine(check) {
+  const m = check.moved, n = check.others || 0;
+  const why = m && m.running ? `A newer job of its project, ${short(m.id)}, is still running: follow job ${short(m.id)}.`
+    : m && m.newest ? `Its project's newest job is ${short(m.id)}: check ${short(m.id)} looks at that one.` : 'Its prompt is not checked again: it ran, and nothing continued it.';
+  return why + (n ? ` The same wallet ordered ${n} other job${n > 1 ? 's' : ''} around then: pick one in the window and I'll look at it.` : '');
+}
+// one job's help, from /proxy/panels/job (and /proxy/panels/context, and the free check of its rebuilt prompt): {text, href, label}.
+// follow: {from, n, briefs} when the posted job was continued and d is its project's newest version (2026-10-29)
+export function helpAnswer(d, words = null, ctx = null, check = null, follow = null) {
+  const movedOn = d.state === 'blocked' && !!ctx && (ctx.later || []).some((v) => v.state === 'completed');
+  // followed: the visitor's words are held against every brief on the path (a continuation's brief says only what it changes)
+  const briefs = follow ? { ...d, objective: [follow.from.objective, ...(follow.briefs || []), d.objective].filter(Boolean).join('\n') } : d;
+  const a = helpAnswer1(briefs, words, movedOn);
+  const more = contextLines(d, ctx);
+  const said = checkLine(d, check);
+  if (said) more.unshift(said);
+  const lead = follow ? `Job ${short(follow.from.id)}${follow.from.state ? ' (' + follow.from.state + ')' : ''} was continued ${follow.n} time${follow.n > 1 ? 's' : ''}; I followed it to its project's newest version. ` : '';
+  return { ...a, text: lead + a.text + (more.length ? ' ' + more.join(' ') : '') };
+}
+function helpAnswer1(d, words, movedOn = false) {
+  const h = d.help || {}, id = short(d.id);
+  const next = h.head ? { href: 'https://explorer.imd.fun/launch?continue=' + h.head, label: 'Next job' } : { href: d.explorer, label: 'explorer' };
+  const step = (key) => ((d.steps || []).find((x) => x.key === key) || {}).name || (key ? key.replace(/_/g, ' ') : 'a step');
+  const payer = wallet(d.paidBy) ? ` Only the wallet that paid (${wallet(d.paidBy)}) can continue it.` : '';
+  const head = h.head && h.head !== d.id ? ` Its project's newest job is ${short(h.head)}: that is the one a Next job continues.` : '';
+  const busy = h.running ? ' Something in this project is still running: a Next job waits until it ends.' : '';
+  const first = ' Run the free check before you pay: it says what the next step would do.';
+  if (d.state === 'blocked') {
+    const r = reasonOf(d.blockedReason), kind = REASON_KIND[r.kind] || null;
+    const what = kind === 'input' ? ` It asks for: "${cut(r.text, 320)}"` : r.text ? ` The record says: "${cut(r.text, 240)}"` : r.kind ? ` Code: ${r.kind}.` : d.blockedReason ? ` The record says: ${cut(String(d.blockedReason), 200)}.` : '';
+    const fix = kind === 'machine' ? ' A Next job runs it again (0.5 IMD). If it looks like the network\'s fault, ask the IMD team with the job id before you pay again.'
+      : kind === 'check' ? ' A Next job can carry the fix, stated as a requirement (0.5 IMD).' : ' A Next job on the explorer continues it, 0.5 IMD, with the missing piece in the objective.';
+    if (movedOn) return { text: `Job ${id} stopped at ${step(r.node)}: ${REASON_WORDS[kind] || 'it is blocked.'}${what}`, href: d.explorer, label: 'explorer' };
+    return { text: `Job ${id} stopped at ${step(r.node)}: ${REASON_WORDS[kind] || 'it is blocked.'}${what}${payer}${fix}${head}${busy}${first}`, ...next };
+  }
+  if (d.state === 'completed') {
+    const done = (d.stages || []).filter((x) => x.state === 'done').map((x) => `${x.name.toLowerCase()}${x.note ? ' (' + x.note + ')' : ''}`);
+    const lines = words ? checkLines(d, words) : [];
+    const what = lines.length ? ` Your words against it: ${lines.join(' ')}` : ' If it is not what you wanted, tell me: check job ' + id + ' for <what you wanted>.';
+    return { text: `Job ${id} completed${done.length ? ': ' + done.join(', ') : ''}. Completed means every step passed its verifier.${what}${lines.length ? ' If something is missing, a Next job with each wish as a requirement can add it (0.5 IMD).' + payer + first : ''}`, ...next };
+  }
+  if (d.state === 'cancelled' || d.state === 'failed') return { text: `Job ${id} ${d.state}. Nothing more will run on it; a new job starts over.`, href: d.explorer, label: 'explorer' };
+  const now = (d.steps || []).find((x) => x.live || x.state === 'working' || x.state === 'running');
+  return { text: `Job ${id} is still running${now ? ': ' + now.name : ''}. Nothing to fix yet; follow it with "follow job ${id}".`, href: d.explorer, label: 'explorer' };
+}
+// an error code alone: the docs' card, or what a blocked reason's kind means and how to get the job read
+export function errAnswer(code, server = true) {
+  const e = ERRORS[code];
+  if (e) return { text: `${e.text} I'm a frog, not IMD support.`, href: e.href, label: e.label };
+  const k = REASON_KIND[code];
+  const next = server ? 'Paste the job\'s explorer link and I\'ll read what it says.' : 'Its page on the explorer says what it asked for, and its Next job button continues it.';
+  return { text: `${code}: a job stopped because ${REASON_WORDS[k] || 'of it.'} ${next}`, href: DOCS + '#continue', label: 'Continuing a project' };
+}
+export const HELPDESK = {
+  which: 'Which job? Paste its id or its explorer link, and I\'ll look it up.',
+  reading: 'He shuffles to the machine and reads the job…',
+  cannot: 'I can\'t read jobs from this copy of the house: the plane lets no browser read them. The explorer can:',
+  missing: 'No job with that id on the plane. Check it, or paste the explorer link.',
+  short: 'No job of the last days starts with that id. Paste the whole id or the explorer link.',
+  checker: 'Paste the body you would quote, the prompt, or a job\'s explorer link: the plane checks it for free, and I add what we learned on the swarm.',
+  checkerJob: 'I read the job and put its prompt in the checker: its objective and settings, as the plane keeps them.',
+  // the swarm copy (no server): the rules here, the plane's free check on the explorer
+  checkerSwarm: 'Paste the body you would quote or just the prompt: I add what we learned on the swarm. The plane\'s own free check runs on the explorer\'s Launch page; this copy can\'t ask it.',
+  busy: 'The plane is busy; ask again in a minute. Meanwhile, the explorer:',
+  seat: 'I\'m a frog, not IMD support.',
+};
 export const SUGGEST = { ask: (line) => `Did you mean "${line}"? Yes or no.`, no: ['Fine. Type help.', 'Then I\'m lost. Try help.'] };
 export const UNKNOWN = ['Huh? Type help.', 'Ser, I\'m a frog, not an LLM. Try help.', 'No idea what that means. Sounds like a whitepaper.',
   '?', 'Is that a new chain? Try help.'];
@@ -587,6 +826,12 @@ export const SHOW = {
   off: 'I only get these on the self-hosted house.',
   click: { job: 'Opened its job in the explorer.', burn: 'Opened the burn on Etherscan in a new tab.' },
   changelog: "Here's what changed in the house.",
+};
+// awesome-imd (2026-10-29): what he says while the list opens
+export const AWESOME = {
+  reading: 'He pulls the community\'s list off GitHub…',
+  lead: (n, s) => `Awesome IMD, the community's list: ${n} things built on IMD, in ${s} sections. All yours in the window; anyone adds theirs with a pull request on GitHub.`,
+  failed: 'GitHub didn\'t hand over the list just now. It lives here:',
 };
 
 // 0xTXT (2026-10-27): posts that are transactions; Agent Surf's announcement wallet, or the wallet the visitor named. Read

@@ -57,6 +57,31 @@ h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; }
 .changelog-list h3:first-child { margin-top: 0; }
 .changelog-list ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
 .changelog-list li { line-height: 1.45; }
+/* awesome-imd (2026-10-29): the community's list, its sections and entries, each name a link */
+.letter-pop .awesome-card { width: min(680px, 100%); max-height: calc(100vh - 24px); }
+.awesome-lede { margin: 0; font-size: 0.85rem; line-height: 1.45; opacity: 0.85; }
+.awesome-list h3 { margin: 14px 0 6px; font-size: 0.85rem; letter-spacing: 0.04em; }
+.awesome-list h3:first-child { margin-top: 0; }
+.awesome-list ul { margin: 0; padding-left: 1.1em; display: grid; gap: 8px; }
+.awesome-list li { line-height: 1.45; font-size: 0.85rem; overflow-wrap: anywhere; }
+.awesome-list .awesome-name { font-weight: 700; }
+.awesome-list a { color: var(--paper-ink); text-decoration: underline; text-underline-offset: 2px; }
+/* the prompt checker (2026-10-28): a letter with a text field; the plane's lines and the proposals under it */
+.letter-pop .checker-card { width: min(720px, 100%); max-height: calc(100vh - 24px); overflow-y: auto; }
+.checker-card textarea { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; font: 0.8rem/1.4 ui-monospace, Menlo, monospace;
+  color: inherit; background: transparent; border: 1.5px solid var(--paper-ink); padding: 6px; resize: vertical; }
+.checker-card select { font: inherit; color: inherit; background: transparent; border: 1.5px solid var(--paper-ink); }
+.checker-lede { margin: 4px 0 10px; font-size: 0.85rem; opacity: 0.85; }
+.checker-source { margin: 0 0 10px; padding: 6px 8px; font-size: 0.85rem; line-height: 1.45; border-left: 3px solid var(--paper-ink); }
+.checker-buttons { display: flex; gap: 8px; }
+.checker-out h3 { margin: 14px 0 4px; font-size: 0.85rem; letter-spacing: 0.04em; }
+.checker-line { margin: 3px 0; font-size: 0.85rem; line-height: 1.45; overflow-wrap: anywhere; }
+.checker-block { color: #b3261e; } .checker-ok { color: #1f7a3a; } .checker-warn { color: #8a5a00; } .checker-plan, .checker-fact { opacity: 0.85; }
+.checker-note::before { content: '→ '; }
+/* the same wallet's other jobs to pick for a follow-up (2026-10-29): one per line, the picked one marked */
+.checker-picks { display: grid; gap: 4px; margin: 6px 0; }
+.letter-pop .letter .checker-pick { justify-self: stretch; text-align: left; font: 0.8rem/1.35 ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+.checker-pick.picked { opacity: 0.6; } .checker-pick.picked::after { content: ' ✓'; }
 .board-svg { overflow-x: auto; }
 .board-svg svg { display: block; width: 100%; min-width: 420px; height: auto; border: 1.5px solid var(--paper-ink); }
 .board-card pre { font-size: 0.8rem; }

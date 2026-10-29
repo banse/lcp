@@ -9,14 +9,16 @@ import { taskCategory } from './feed.js';
 import { THEMES, DEFAULT_THEME } from './themes/index.js';
 import { THINGS } from './themes/imd-layout.js';
 import { setPhase } from './world.js';
-import { parse, answer, pick, stressCost, HELP, BUSY, DO, EGG, UNKNOWN, ASLEEP, AWAY, OUT, WALKOUT, LOOKUP, STRESS, MARKET, marketText, poolText,
-  SWORN, BURN, OXTXT, SHOW, RADIO, NEWS, WALLET, SCREEN, FAQ, SUGGEST, trophyLine } from './talk.js';
+import { parse, answer, pick, stressCost, helpFor, BUSY, DO, EGG, UNKNOWN, ASLEEP, AWAY, OUT, WALKOUT, LOOKUP, STRESS, MARKET, marketText, poolText,
+  SWORN, BURN, OXTXT, SHOW, RADIO, NEWS, WALLET, SCREEN, FAQ, SUGGEST, HELPDESK, AWESOME, helpAnswer, helpWords, errAnswer, trophyLine } from './talk.js';
 import { DAILY, latestIssue, issueLine, paperLines } from './daily.js';
 import { NewsReader } from './news.js';
 import { cardOf } from './sworn.js';
 import { SWORN_FRAME, GRID_PANEL, SHOW_SPOTS } from './themes/imd.js';
 import { ShowcaseFeed, videoEl, dropMedia, siteOverlay, VIDEO_S, AUDIO_S, SITE_S, PLANE_S } from './showcase.js';
-import { CHANGELOG } from './changelog.js';
+import { changelogFor } from './changelog.js';
+import { AWESOME_REPO, readAwesome } from './awesome.js';
+import { Checker, rebuildFromJob, laterVersions, staleParent, planeMoved, nextFrom, warningsOf } from './checker.js';
 import { StationPop } from './station.js';
 import { Radio, STATIONS, PENDING, GAIN, stationByName, stationFor, sadStation, SITE as THEIDM } from './radio.js';
 import { StationFeed, SILENCE, POLL_MS, amount, readGrid } from './stationfeed.js';
@@ -61,6 +63,8 @@ const FEATURES = { lookSwitch: false, wallet: false, machineTicker: false, marke
   showcase: BUILD === 'server',
   // what visitors ask, counted (2026-10-28, owner: "counts only for now"): the kind and act of each line, never its text
   talkCounts: BUILD === 'server',
+  // the swarm help desk reads a visitor's job through the server (2026-10-28): api.imd.fun lets no browser read a job
+  helpDesk: BUILD !== 'swarm',
   // his own record with the visitor's music off (2026-10-26) played the station anyway; off since 2026-10-28 (owner: "music should
   // only be external audio from jobs or videos or anything else, and sound should be everything produced by pepe itself")
   recordsWithoutMusic: false };                        // the swarm's new work and the burns acted out (2026-10-28): the server's /proxy/showcase
@@ -1195,7 +1199,7 @@ async function jobActivity(id, oracle = false) {
 async function pageCommand(it, cmd) {
   const say = (text) => { talkReply(text); addDiary(`You: "${echo(cmd)}". ${text}`); };
   switch (it.act) {
-    case 'help': talkReply(HELP, false); return;
+    case 'help': talkReply(helpFor(BUILD !== 'swarm'), false); return;
     case 'visit': visit(it.seat); say(`Seat #${it.seat}. You moved, I didn't.`); return;
     case 'random': await randomBusySeat(); talkReply('A random busy seat. Same face, different bags.'); return;
     case 'demo': $('demo-btn').click(); talkReply(mode === 'demo' ? 'The demo: a made-up seat. Like most roadmaps.' : 'Back to a real seat.'); return;
@@ -1388,9 +1392,18 @@ async function talk(raw) {
   const cmd = String(raw || '').trim().slice(0, 160);
   if (!cmd) return;
   talkState.history.push(cmd); talkState.back = 0;
-  const it = parse(cmd);
+  let it = parse(cmd);
+  const asked = talkState.asked;                         // "Which job?": the next line's job id or link is the answer
+  if (asked && asked.what === 'helpJob' && Date.now() - asked.at < 5 * 60000 && it.kind !== 'help') {
+    const m = /\b([0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\b/.exec(cmd.toLowerCase());
+    if (m) { talkState.asked = null; it = { kind: 'help', job: m[1], words: helpWords(cmd), polite: it.polite, rude: it.rude, thanks: it.thanks }; }
+  }
   countTalk(it);
   if (it.kind === 'page') return pageCommand(it, cmd);
+  if (it.kind === 'help') return helpTalk(it, cmd);      // the help desk works whatever he does, like the radio
+  if (it.kind === 'awesome') return awesomeTalk(cmd);     // so does the community's list: it is the visitor's, not his
+  if (it.kind === 'errcode') { const a = errAnswer(it.code, FEATURES.helpDesk); return talkSay(cmd, a.text, { href: a.href, label: a.label }); }
+  if (it.kind === 'checker') { checker.open(it.job); return talkSay(cmd, !FEATURES.helpDesk ? HELPDESK.checkerSwarm : it.job ? HELPDESK.checkerJob : HELPDESK.checker); }
   if (!house) { talkReply('Nobody lives here yet. Pick a seat first.'); return; }
   const s = house.state;
   if (it.kind === 'radio') return radioTalk(it, cmd, s);          // the radio works whatever he does (page-like)
@@ -1463,6 +1476,110 @@ async function talk(raw) {
     return talkSay(cmd, SUGGEST.ask(it.line));
   }
   return talkSay(cmd, pick(UNKNOWN));
+}
+
+// the prompt checker (2026-10-28): its window (checker.js); the plane's free check goes through the server (selfhost/checkrelay.py),
+// so the swarm copy shows the proposals only
+const planeCheck = FEATURES.helpDesk ? async (action, input) => {
+  const r = await fetch(proxyUrl('/proxy/check'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, input }) });
+  return r.json().catch(() => ({ error: 'HTTP ' + r.status }));
+} : null;
+const checker = new Checker(document, {
+  check: planeCheck,
+  jobCheck: FEATURES.helpDesk ? (id) => jobCheck(id) : null,     // a job named in the window: the same check as Pepe's
+  onPick: (id) => helpTalk({ kind: 'help', job: id, words: null }, 'check ' + id.slice(0, 8), true),
+  onClose: () => canvas.focus(),
+});
+
+// a posted job's check (2026-10-28/29): its record and context through the server; the path its continuations took, to the project's
+// newest version (owner, 2026-10-29: "if there's a continuation follow the path until the last one and then do the free plane check");
+// the plane's free check of its prompt as quoted, or of a next version from the newest. A job that ran and that nothing continued is not
+// checked again (its quote's parent is no longer the newest: the plane only says so): the same wallet's other jobs around then instead,
+// for the visitor to pick one ("pepe should ask for selecting one of the jobs found in the popup for follow up research")
+// every whole job id the help desk read (the job, its versions, its predecessor, the wallet's other jobs): Pepe names them by 8
+// characters ("check 79ec8ee4"), and the server's window may not reach back to them
+const seenJobs = new Map();                                 // first 8 characters -> the whole id
+const seen = (...ids) => { for (const x of ids) if (typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(x)) seenJobs.set(x.slice(0, 8), x); };
+async function readJob(id) {
+  try {
+    const r = await fetch(proxyUrl('/proxy/panels/job?id=' + id));
+    const d = r.status === 404 ? { missing: true } : r.ok ? await r.json() : null;
+    if (d && d.id) seen(d.id, ...((d.help && d.help.versions) || []).map((v) => v.id), d.help && d.help.parent);
+    return d;
+  } catch (e) { return null; }
+}
+async function readContext(id) {
+  try {
+    const r = await fetch(proxyUrl('/proxy/panels/context?id=' + id)); const c = r.ok ? await r.json() : null;
+    if (c && !c.busy) seen(...(c.later || []).map((v) => v.id), c.parent && c.parent.id, ...((c.payer && c.payer.jobs) || []).map((j) => j.id));
+    return c && !c.busy ? c : null;
+  } catch (e) { return null; }
+}
+async function jobCheck(ref) {
+  ref = seenJobs.get(ref) || ref;                           // 8 characters of a job read here (the window's run comes this way too)
+  const first = await readJob(ref);
+  if (!first || first.missing || first.busy || !first.id || (ref.length === 36 && first.id !== ref)) return { error: first && first.missing ? (ref.length < 36 ? 'short' : 'missing') : 'busy', id: ref };
+  let d = first, ctx = await readContext(d.id), n = 0;
+  // its own prompt first (owner, 2026-10-29, job b7c7b00e: "this should open a popup but doesnt (legit error found in plane check)"): a
+  // blocker of its own is the answer. An ended continuation's quote is not asked (the plane would only say "this job ran"), and that
+  // answer, or a clean prompt with later versions, sends the check down the project's path
+  const rb0 = rebuildFromJob(first), stale0 = staleParent(rb0, first);
+  const chk0 = !stale0 && rb0.checkable && planeCheck ? await planeCheck(rb0.action, rb0.input).catch(() => null) : null;
+  const m0 = planeMoved(chk0);
+  const done = (x) => ({ d: first, from: null, n: 0, briefs: [], ctx, rb: rb0, chk: chk0, stale: false, moved: null, others: [], ...x });
+  if (chk0 && !m0 && Array.isArray(chk0.blockers) && chk0.blockers.length) return done({});
+  if (!stale0 && rb0.checkable && planeCheck && !(chk0 && Array.isArray(chk0.blockers))) return done({});   // no answer (the limit): said, not passed
+  const briefs = [];                                        // the versions' titles between the posted job and the newest
+  for (let hop = 0; hop < 3; hop++) {                       // a kept record can lag behind its project: look again from the newest
+    const later = ctx ? ctx.later || [] : laterVersions(d);
+    const next = later.length ? await readJob(later[later.length - 1].id) : null;
+    if (!next || !next.id || next.busy || next.missing) break;
+    briefs.push(...later.slice(0, -1).map((v) => v.title).filter(Boolean));
+    n += later.length; d = next; ctx = await readContext(d.id);
+  }
+  const others = () => { const w = ctx && ctx.payer; return w && !w.busy ? w.jobs || [] : []; };
+  const movedOf = (m, at) => (m ? { ...m, newest: !m.running && m.id !== at.id } : null);
+  if (!n) {                                                 // nothing later: its own check; when it ran, it is the path's last one
+    if (!stale0 && !m0) return done({});
+    const moved = movedOf(m0, first);
+    if (moved && (moved.running || moved.newest)) return done({ chk: null, stale: true, moved, others: others() });
+    // (owner, 2026-10-29, job 79ec8ee4: "still no popup"): a next version from it is checked, and the jobs around it are offered
+    const rbn = nextFrom(first);
+    const chkn = rbn.checkable && planeCheck ? await planeCheck(rbn.action, rbn.input).catch(() => null) : null;
+    return done({ rb: rbn, chk: planeMoved(chkn) ? null : chkn, stale: true, others: others() });
+  }
+  const rb = nextFrom(d);                                   // followed: a next version from the newest
+  let chk = rb.checkable && planeCheck ? await planeCheck(rb.action, rb.input).catch(() => null) : null;
+  const m = planeMoved(chk);
+  if (m) chk = null;
+  return { d, from: first, n, briefs, ctx, rb, chk, stale: !!m, moved: movedOf(m, d), others: m ? others() : [] };
+}
+
+// the swarm help desk (2026-10-28, ideas lcp-swarm-help-desk.md): the visitor's job read through the server (jobCheck), his answer
+// with the next step's link (a Next job: explorer.imd.fun/launch?continue=<the project's newest job>); the check window with a blocker,
+// the jobs to pick from, or always when the visitor picked in it (inWindow). The swarm copy cannot read a job (no relay): the explorer
+// link. What the visitor wanted ("for …") stays in this browser.
+async function helpTalk(it, cmd, inWindow = false) {
+  if (!it.job) { talkState.asked = { what: 'helpJob', at: Date.now() }; return talkSay(cmd, HELPDESK.which); }
+  if (!FEATURES.helpDesk) return talkSay(cmd, HELPDESK.cannot, { href: `${EXPLORER}/jobs/${it.job}`, label: 'explorer' });
+  const id = it.job.length < 36 ? seenJobs.get(it.job) || (await resolveJob(it.job)) || it.job : it.job;   // one read here, a running one, else the server's window
+  talkReply(HELPDESK.reading, false);
+  if (house) house.event({ type: 'command', act: 'lookup' });
+  const r = await jobCheck(id);                           // the column stays as it is (owner, 2026-10-28: "dont open the job in right panel")
+  if (r.error) {
+    if (inWindow) checker.showJobCheck(r);
+    return r.error === 'busy' ? talkSay(cmd, HELPDESK.busy, { href: `${EXPLORER}/jobs/${id}`, label: 'explorer' }) : talkSay(cmd, HELPDESK[r.error]);
+  }
+  // the window: a blocker (the whole check, without asking the plane again), the jobs to pick from, or a pick made in it
+  const answered = !!r.chk && Array.isArray(r.chk.blockers);
+  const blocked = answered && r.chk.blockers.length > 0, warned = answered && warningsOf(r.chk).length > 0;
+  const shown = inWindow || blocked || warned || r.stale && r.others.length > 0;
+  if (shown) checker.showJobCheck(r);
+  const check = answered ? { blockers: r.chk.blockers, warnings: warningsOf(r.chk), guessed: r.rb.guessed, shown, next: !!r.rb.next, lone: r.stale, others: r.others.length }
+    : r.stale && (r.moved || !r.rb.checkable || !planeCheck) ? { stale: true, others: r.others.length, moved: r.moved }   // nothing was asked
+      : r.rb.checkable && planeCheck ? { failed: true, others: r.others.length } : null;   // asked, and no answer: the limit or the plane
+  const a = helpAnswer(r.d, it.words, r.ctx, check, r.from ? { from: r.from, n: r.n, briefs: r.briefs } : null);
+  return talkSay(cmd, a.text, { href: a.href, label: a.label });
 }
 
 // the radio (radio.js): stations, volume, what plays; the genre is the market's. He reacts when he can (brain.js radioEvent):
@@ -1731,11 +1848,54 @@ if (FEATURES.showcase) {
   });
   canvas.addEventListener('mousemove', (e) => { if (showSpot(e)) canvas.style.cursor = 'pointer'; });
 }
+// awesome-imd (2026-10-29, owner: "he should show all projects with links in a popup listed in this readme"): the README read in this
+// browser (src/awesome.js), every section and entry; each name opens its link in a new tab, the README's own links (source, live) too
+function awesomeLine(parts) {
+  const frag = document.createDocumentFragment();
+  for (const x of parts) {
+    if (x.href) { const a = document.createElement('a'); a.href = x.href; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = x.text; frag.append(a); }
+    else if (x.code) { const c = document.createElement('code'); c.textContent = x.text; frag.append(c); }
+    else frag.append(x.text);
+  }
+  return frag;
+}
+async function awesomeTalk(cmd) {
+  talkReply(AWESOME.reading, false);
+  if (house) house.event({ type: 'command', act: 'lookup' });
+  let list = null;
+  try { list = await readAwesome(); } catch (e) { list = null; }
+  if (!list) return talkSay(cmd, AWESOME.failed, { href: AWESOME_REPO, label: 'awesome-imd' });
+  $('awesome-lede').textContent = `${list.intro || 'Projects built on IMD.'} From github.com/Identity-md/awesome-imd, as it stands now.`;
+  const box = $('awesome-list');
+  box.textContent = '';
+  for (const s of list.sections) {
+    const h = document.createElement('h3'), ul = document.createElement('ul');
+    h.textContent = s.title;
+    for (const i of s.items) {
+      const li = document.createElement('li');
+      const name = document.createElement(i.href ? 'a' : 'span');
+      name.className = 'awesome-name'; name.textContent = i.name;
+      if (i.href) { name.href = i.href; name.target = '_blank'; name.rel = 'noopener noreferrer'; }
+      li.append(name);
+      if (i.parts.length) li.append(' — ', awesomeLine(i.parts));
+      ul.append(li);
+    }
+    box.append(h, ul);
+  }
+  $('awesome-pop').hidden = false;
+  $('awesome-pop').querySelector('.awesome-card').scrollTop = 0;   // from the top, though Close (at the end) takes the focus
+  $('awesome-close').focus({ preventScroll: true });
+  return talkSay(cmd, AWESOME.lead(list.count, list.sections.length), { href: AWESOME_REPO, label: 'awesome-imd' });
+}
+const closeAwesome = () => { $('awesome-pop').hidden = true; canvas.focus(); };
+$('awesome-close').addEventListener('click', closeAwesome);
+$('awesome-pop').addEventListener('click', (e) => { if (e.target === $('awesome-pop')) closeAwesome(); });
+$('awesome-pop').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAwesome(); });
 // the changelog (2026-10-28): what changed in the house, newest first (changelog.js)
 function openChangelog() {
   const list = $('changelog-list');
   list.textContent = '';
-  for (const c of CHANGELOG) {
+  for (const c of changelogFor(BUILD !== 'swarm')) {                // the swarm copy: its own entries (changelog.js)
     const h = document.createElement('h3'), ul = document.createElement('ul');
     h.textContent = c.date;
     for (const i of c.items) { const li = document.createElement('li'); li.textContent = i; ul.append(li); }
